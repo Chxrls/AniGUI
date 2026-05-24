@@ -1,6 +1,9 @@
 # AniGUI
 
-AniGUI is a native desktop client prototype for streaming anime, built with Python 3.10+ and PyQt6. It wraps an existing scraping backend (AllAnime) and integrates with AniList GraphQL API to fetch rich metadata (cover art, synopsis, and genres).
+AniGUI is a native desktop client prototype for streaming anime.
+
+![]("repoAssets/AniGUI landing page.png")
+![]("repoAssets/AniGUI select page.png")
 
 ## Features
 - **Monochromatic Dark UI:** Sleek, high-information-density UI matching Seanime's aesthetics.
