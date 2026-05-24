@@ -232,6 +232,11 @@ class Database:
             cur = conn.execute("SELECT * FROM downloads ORDER BY added_at DESC")
             return [dict(row) for row in cur.fetchall()]
 
+    def remove_download(self, download_id: int):
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM downloads WHERE id = ?", (download_id,))
+            conn.commit()
+
     # Caching API
     def get_cached(self, key: str) -> Optional[str]:
         with self._get_conn() as conn:

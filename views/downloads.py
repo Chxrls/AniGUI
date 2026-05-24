@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QHeaderView
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QHeaderView, QPushButton, QMessageBox
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
 from anigui.backend.db import db
@@ -17,10 +17,19 @@ class DownloadsView(QWidget):
         self.layout.setContentsMargins(10, 10, 10, 10)
         self.layout.setSpacing(10)
         
-        # Heading
+        # Heading and Toolbar
+        self.toolbar_layout = QHBoxLayout()
         self.title_label = QLabel("Downloads", self)
         self.title_label.setObjectName("ViewTitle")
-        self.layout.addWidget(self.title_label)
+        self.toolbar_layout.addWidget(self.title_label)
+        
+        self.toolbar_layout.addStretch()
+        
+        self.delete_btn = QPushButton("Delete Selected", self)
+        self.delete_btn.clicked.connect(self.delete_selected)
+        self.toolbar_layout.addWidget(self.delete_btn)
+        
+        self.layout.addLayout(self.toolbar_layout)
         
         # Table
         self.table = QTableWidget(self)
@@ -36,7 +45,7 @@ class DownloadsView(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Path takes up space
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.table.setObjectName("DownloadsTable")
         self.table.itemDoubleClicked.connect(self.open_file)
         
@@ -72,6 +81,7 @@ class DownloadsView(QWidget):
             # Create non-editable items
             t_item = QTableWidgetItem(title)
             t_item.setFlags(t_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            t_item.setData(Qt.ItemDataRole.UserRole, item["id"])
             self.table.setItem(row_idx, 0, t_item)
             
             ep_item = QTableWidgetItem(f"Ep {episode}")
@@ -107,3 +117,40 @@ class DownloadsView(QWidget):
         # Standard desktop service open
         url = QUrl.fromLocalFile(file_path)
         QDesktopServices.openUrl(url)
+
+    def delete_selected(self):
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            return
+            
+        reply = QMessageBox.question(
+            self, 'Confirm Deletion',
+            f'Are you sure you want to delete {len(selected_rows)} selected download(s)?\\nThis will also delete the downloaded files from your disk.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            for index in selected_rows:
+                row = index.row()
+                # Get the item containing the ID
+                t_item = self.table.item(row, 0)
+                path_item = self.table.item(row, 2)
+                
+                if t_item and path_item:
+                    download_id = t_item.data(Qt.ItemDataRole.UserRole)
+                    file_path = path_item.text().strip()
+                    
+                    # Delete file from disk
+                    if file_path and os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                        except Exception as e:
+                            print(f"Error deleting file {file_path}: {e}")
+                    
+                    # Remove from database
+                    if download_id is not None:
+                        db.remove_download(download_id)
+            
+            self.refresh()
+
