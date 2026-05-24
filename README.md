@@ -2,8 +2,8 @@
 
 AniGUI is a native desktop client prototype for streaming anime.
 
-![]("repoAssets/AniGUI landing page.png")
-![]("repoAssets/AniGUI select page.png")
+![landing page](repoAssets/AniGUI_landing_page.png)
+![select page](repoAssets/AniGUI_select_page.png)
 
 ## Features
 - **Monochromatic Dark UI:** Sleek, high-information-density UI matching Seanime's aesthetics.
