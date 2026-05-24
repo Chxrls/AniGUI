@@ -158,6 +158,57 @@ QPushButton#BookmarkButton:hover, QPushButton#DownloadButton:hover {
     background-color: #2e2e2e;
 }
 
+/* Custom Scrollbars */
+QScrollBar:vertical {
+    border: none;
+    background: #1a1a1a;
+    width: 10px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: #3e3e3e;
+    min-height: 20px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #c084fc;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+QScrollBar:horizontal {
+    border: none;
+    background: #1a1a1a;
+    height: 10px;
+    margin: 0px;
+}
+
+QScrollBar::handle:horizontal {
+    background: #3e3e3e;
+    min-width: 20px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: #c084fc;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
+
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
 /* Lists and Tables */
 QListWidget, QTableWidget {
     background-color: #1a1a1a;

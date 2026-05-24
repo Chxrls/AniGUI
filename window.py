@@ -12,7 +12,7 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("AniGUI")
-        self.setMinimumSize(960, 640)
+        self.setMinimumSize(1100, 640)
         self.setObjectName("MainWindow")
         
         # Central widget and layout

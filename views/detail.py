@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QDialog, QHBoxLayout, QVBoxLayout, QLabel, 
-    QComboBox, QListWidget, QListWidgetItem, QPushButton, QWidget
+    QComboBox, QListWidget, QListWidgetItem, QPushButton, QWidget, QScrollArea, QMenu
 )
 from PyQt6.QtCore import Qt, QThreadPool
 from PyQt6.QtGui import QPixmap
@@ -10,7 +10,7 @@ from anigui.backend.worker import EpisodeResolveWorker
 from anigui.widgets.player import launch_player_and_save_history
 import os
 
-class AnimeDetailDialog(QDialog):
+class AnimeDetailWidget(QWidget):
     """Detailed view for a selected anime.
 
     Allows translation selection, bookmark toggling, download queueing,
@@ -23,7 +23,8 @@ class AnimeDetailDialog(QDialog):
         self.anime_id = self.anime_data.get("id") or self.anime_data.get("anime_id")
         self.title = self.anime_data.get("name") or self.anime_data.get("anime_title") or "Unknown Title"
         self.english_title = self.anime_data.get("english_name", "")
-        self.synopsis = self.anime_data.get("synopsis") or "No synopsis available."
+        raw_synopsis = self.anime_data.get("synopsis") or "No synopsis available."
+        self.synopsis = raw_synopsis.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n").replace("<i>", "").replace("</i>", "").replace("<b>", "").replace("</b>", "").strip()
         self.genres = self.anime_data.get("genres") or []
         self.sub_count = self.anime_data.get("sub_count", 0)
         self.dub_count = self.anime_data.get("dub_count", 0)
@@ -31,10 +32,8 @@ class AnimeDetailDialog(QDialog):
         # Local thumbnail path
         self.thumb_path = self.anime_data.get("thumbnail_url_local") or ""
         
-        # Window attributes
-        self.setWindowTitle(f"AniGUI — {self.title}")
-        self.setMinimumSize(600, 500)
-        self.setObjectName("DetailDialog")
+        # Widget attributes
+        self.setObjectName("DetailWidget")
         
         # Layouts
         self.main_layout = QVBoxLayout(self)
@@ -45,9 +44,9 @@ class AnimeDetailDialog(QDialog):
         top_layout = QHBoxLayout()
         top_layout.setSpacing(15)
         
-        # Left: Cover Art (fixed 160 x 240)
+        # Left: Cover Art (fixed 200 x 300)
         self.cover_label = QLabel(self)
-        self.cover_label.setFixedSize(160, 240)
+        self.cover_label.setFixedSize(200, 300)
         self.cover_label.setObjectName("DetailCover")
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if self.thumb_path and os.path.exists(self.thumb_path):
@@ -61,7 +60,7 @@ class AnimeDetailDialog(QDialog):
         else:
             self.cover_label.setStyleSheet("background-color: #242424; color: #888888; border: 1px dashed #2e2e2e;")
             self.cover_label.setText("No Image")
-        top_layout.addWidget(self.cover_label)
+        top_layout.addWidget(self.cover_label, alignment=Qt.AlignmentFlag.AlignTop)
         
         # Right: Info details
         info_widget = QWidget(self)
@@ -91,9 +90,16 @@ class AnimeDetailDialog(QDialog):
         self.synopsis_label = QLabel(self.synopsis, self)
         self.synopsis_label.setWordWrap(True)
         self.synopsis_label.setObjectName("DetailSynopsis")
-        # Handle long synopses cleanly
-        self.synopsis_label.setMaximumHeight(80)
-        info_layout.addWidget(self.synopsis_label)
+        self.synopsis_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        
+        # Wrap synopsis in a scroll area to keep layout clean
+        self.synopsis_scroll = QScrollArea(self)
+        self.synopsis_scroll.setWidgetResizable(True)
+        self.synopsis_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.synopsis_scroll.setStyleSheet("background: transparent; border: none;")
+        self.synopsis_scroll.setWidget(self.synopsis_label)
+        
+        info_layout.addWidget(self.synopsis_scroll)
         
         # Controls row (Selector & Buttons)
         controls_layout = QHBoxLayout()
@@ -120,15 +126,22 @@ class AnimeDetailDialog(QDialog):
         self.update_bookmark_button_ui()
         controls_layout.addWidget(self.bookmark_btn)
         
-        # Download selected episode button
-        self.download_btn = QPushButton("Download Ep", self)
+        # Download button with Dropdown Menu
+        self.download_btn = QPushButton("Download", self)
         self.download_btn.setObjectName("DownloadButton")
-        self.download_btn.clicked.connect(self.queue_download)
+        
+        self.download_menu = QMenu(self)
+        dl_ep_action = self.download_menu.addAction("Download Selected Ep")
+        dl_ep_action.triggered.connect(self.queue_download)
+        dl_all_action = self.download_menu.addAction("Download All Eps")
+        dl_all_action.triggered.connect(self.queue_download_all)
+        
+        self.download_btn.setMenu(self.download_menu)
         controls_layout.addWidget(self.download_btn)
         
-        info_layout.addLayout(controls_layout)
         top_layout.addWidget(info_widget)
         self.main_layout.addLayout(top_layout)
+        self.main_layout.addLayout(controls_layout)
         
         # Bottom: Episode list header & Status
         status_row = QHBoxLayout()
@@ -282,3 +295,57 @@ class AnimeDetailDialog(QDialog):
         
         self.status_label.setText(f"Started downloading Ep {ep_str}.")
         self.status_label.setStyleSheet("color: #c084fc;")
+
+    def queue_download_all(self):
+        translation_type = self.get_current_translation()
+        ep_list = fetch_episodes(self.anime_data, translation_type)
+        if not ep_list:
+            self.status_label.setText("No episodes found to download.")
+            self.status_label.setStyleSheet("color: #f87171;")
+            return
+            
+        download_dir = db.get_setting("download_path", "~/Downloads")
+        download_dir = os.path.expanduser(download_dir)
+        os.makedirs(download_dir, exist_ok=True)
+        
+        safe_title = "".join([c for c in self.title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+        
+        from anigui.backend.worker import download_manager
+        count = 0
+        for ep in ep_list:
+            ep_str = ep["number_str"]
+            file_path = os.path.join(download_dir, f"{safe_title}_Ep_{ep_str}.mp4")
+            
+            # Skip if already exists on disk
+            if os.path.exists(file_path):
+                continue
+                
+            download_id = db.add_download(
+                anime_id=self.anime_id,
+                anime_title=self.title,
+                episode_str=ep_str,
+                file_path=file_path,
+                size=0
+            )
+            download_manager.start_download(download_id, self.anime_id, ep_str, translation_type, file_path)
+            count += 1
+            
+        if count > 0:
+            self.status_label.setText(f"Queued {count} new episodes for download.")
+            self.status_label.setStyleSheet("color: #c084fc;")
+        else:
+            self.status_label.setText("All episodes already exist on disk.")
+            self.status_label.setStyleSheet("color: #888888;")
+
+class AnimeDetailDialog(QDialog):
+    """Popup wrapper for AnimeDetailWidget for backward compatibility."""
+    def __init__(self, anime_data: dict, parent=None):
+        super().__init__(parent)
+        title = anime_data.get("name") or anime_data.get("anime_title") or "Unknown Title"
+        self.setWindowTitle(f"AniGUI — {title}")
+        self.setMinimumSize(600, 500)
+        
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.detail_widget = AnimeDetailWidget(anime_data, self)
+        self.layout.addWidget(self.detail_widget)
