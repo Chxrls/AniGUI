@@ -1,8 +1,18 @@
 import os
+import subprocess
 import hashlib
 import requests
-from PyQt6.QtCore import QRunnable, QObject, pyqtSignal
+import psutil
+import re
+from PyQt6.QtCore import QRunnable, QObject, pyqtSignal, QThreadPool
 from anigui.backend.api import search_anime, get_anilist_metadata, resolve_stream_url
+
+def parse_time(time_str: str) -> float:
+    try:
+        h, m, s = time_str.split(':')
+        return int(h) * 3600 + int(m) * 60 + float(s)
+    except:
+        return 0.0
 
 THUMB_DIR = os.path.expanduser("~/.config/anigui/thumbnails")
 
@@ -10,6 +20,61 @@ class WorkerSignals(QObject):
     """Container for signals emitted by the background workers."""
     finished = pyqtSignal(object)  # Can be list, dict, str, etc.
     error = pyqtSignal(str)
+
+class DownloadManager(QObject):
+    progress_updated = pyqtSignal(int, dict)
+    status_changed = pyqtSignal(int, str)
+    
+    def __init__(self):
+        super().__init__()
+        self.active_workers = {}
+        
+    def start_download(self, download_id, anime_id, ep_str, translation_type, file_path):
+        from anigui.backend.db import db
+        from anigui.backend.worker import DownloadWorker
+        worker = DownloadWorker(download_id, anime_id, ep_str, translation_type, file_path)
+        self.active_workers[download_id] = worker
+        db.update_download_status(download_id, "downloading")
+        self.status_changed.emit(download_id, "downloading")
+        QThreadPool.globalInstance().start(worker)
+        
+    def pause_download(self, download_id):
+        worker = self.active_workers.get(download_id)
+        if worker and hasattr(worker, 'proc') and worker.proc:
+            try:
+                p = psutil.Process(worker.proc.pid)
+                p.suspend()
+                from anigui.backend.db import db
+                db.update_download_status(download_id, "paused")
+                self.status_changed.emit(download_id, "paused")
+            except Exception as e:
+                print(f"Error suspending: {e}")
+                
+    def resume_download(self, download_id):
+        worker = self.active_workers.get(download_id)
+        if worker and hasattr(worker, 'proc') and worker.proc:
+            try:
+                p = psutil.Process(worker.proc.pid)
+                p.resume()
+                from anigui.backend.db import db
+                db.update_download_status(download_id, "downloading")
+                self.status_changed.emit(download_id, "downloading")
+            except Exception as e:
+                print(f"Error resuming: {e}")
+
+    def cancel_download(self, download_id):
+        worker = self.active_workers.get(download_id)
+        if worker and hasattr(worker, 'proc') and worker.proc:
+            try:
+                p = psutil.Process(worker.proc.pid)
+                p.kill()
+                from anigui.backend.db import db
+                db.update_download_status(download_id, "failed")
+                self.status_changed.emit(download_id, "failed")
+            except Exception as e:
+                print(f"Error killing: {e}")
+
+download_manager = DownloadManager()
 
 class SearchWorker(QRunnable):
     """Worker to perform non-blocking AllAnime searches."""
@@ -92,4 +157,99 @@ class EpisodeResolveWorker(QRunnable):
             url = resolve_stream_url(self.anime_id, self.episode_str, self.translation_type)
             self.signals.finished.emit(url)
         except Exception as e:
+            self.signals.error.emit(str(e))
+
+class DownloadWorker(QRunnable):
+    """Worker to download an episode HLS stream to an mp4 file using ffmpeg."""
+    def __init__(self, download_id: int, anime_id: str, episode_str: str, translation_type: str, file_path: str):
+        super().__init__()
+        self.download_id = download_id
+        self.anime_id = anime_id
+        self.episode_str = episode_str
+        self.translation_type = translation_type
+        self.file_path = file_path
+        self.signals = WorkerSignals()
+
+    def run(self):
+        from anigui.backend.db import db
+        try:
+            print(f"Worker thread started for download ID {self.download_id}", flush=True)
+            
+            # Resolve stream URL
+            print(f"Resolving stream URL for {self.anime_id} Episode {self.episode_str}...", flush=True)
+            url = resolve_stream_url(self.anime_id, self.episode_str, self.translation_type)
+            if not url:
+                raise ValueError("Stream URL resolution failed.")
+            print(f"URL resolved. Beginning download...", flush=True)
+
+            # Download using ffmpeg
+            cmd = [
+                "ffmpeg",
+                "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                "-headers", "Referer: https://allmanga.to\r\n",
+                "-y",
+                "-i", url,
+                "-c", "copy",
+                "-bsf:a", "aac_adtstoasc",
+                self.file_path
+            ]
+            
+            print(f"Running ffmpeg for {self.file_path}", flush=True)
+            
+            startupinfo = None
+            if os.name == "nt":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            
+            self.proc = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.PIPE, 
+                text=True, 
+                universal_newlines=True, 
+                stdin=subprocess.DEVNULL,
+                startupinfo=startupinfo
+            )
+            
+            duration_pattern = re.compile(r"Duration:\s*(\d{2}:\d{2}:\d{2}\.\d{2})")
+            progress_pattern = re.compile(r"size=\s*(\d+[kKmMgG]?i?B|\d+)\s+time=(\d{2}:\d{2}:\d{2}\.\d{2})\s+bitrate=([\d\.]+kbits/s)")
+            
+            duration_secs = 0.0
+            
+            for line in self.proc.stderr:
+                if duration_secs == 0.0:
+                    dur_match = duration_pattern.search(line)
+                    if dur_match:
+                        duration_secs = parse_time(dur_match.group(1))
+                
+                prog_match = progress_pattern.search(line)
+                if prog_match:
+                    size_str = prog_match.group(1)
+                    time_str = prog_match.group(2)
+                    bitrate = prog_match.group(3)
+                    
+                    current_secs = parse_time(time_str)
+                    percentage = int((current_secs / duration_secs) * 100) if duration_secs > 0 else 0
+                    if percentage > 100: percentage = 100
+                    
+                    download_manager.progress_updated.emit(self.download_id, {
+                        "size": size_str,
+                        "time": time_str,
+                        "bitrate": bitrate,
+                        "percentage": percentage
+                    })
+                    
+            self.proc.wait()
+            if self.proc.returncode != 0:
+                raise RuntimeError(f"ffmpeg error exit code: {self.proc.returncode}")
+
+            # Get final file size and update status
+            file_size = os.path.getsize(self.file_path)
+            db.update_download_status(self.download_id, "completed", file_size)
+            download_manager.status_changed.emit(self.download_id, "completed")
+            
+            self.signals.finished.emit(self.file_path)
+        except Exception as e:
+            db.update_download_status(self.download_id, "failed")
+            download_manager.status_changed.emit(self.download_id, "failed")
             self.signals.error.emit(str(e))

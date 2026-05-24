@@ -110,7 +110,13 @@ def search_anime(query: str) -> list[dict]:
 
 def fetch_episodes(anime: dict, translation_type: str = "sub") -> list[dict]:
     key = "sub_episodes" if translation_type == "sub" else "dub_episodes"
-    ep_strings = anime.get(key, [])
+    if key in anime:
+        ep_strings = anime[key]
+    else:
+        count_key = "sub_count" if translation_type == "sub" else "dub_count"
+        count = anime.get(count_key, 0)
+        ep_strings = [str(i) for i in range(1, count + 1)]
+        
     episodes = []
     for ep_str in ep_strings:
         try:

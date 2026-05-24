@@ -4,6 +4,7 @@ from anigui.views.home import HomeView
 from anigui.views.search import SearchView
 from anigui.views.bookmarks import BookmarksView
 from anigui.views.downloads import DownloadsView
+from anigui.views.settings import SettingsView
 from anigui.views.detail import AnimeDetailDialog
 
 class MainWindow(QMainWindow):
@@ -45,7 +46,8 @@ class MainWindow(QMainWindow):
             ("Home", 0),
             ("Search", 1),
             ("Bookmarks", 2),
-            ("Downloads", 3)
+            ("Downloads", 3),
+            ("Settings", 4)
         ]
         
         for text, index in btn_config:
@@ -72,11 +74,13 @@ class MainWindow(QMainWindow):
         self.search_view = SearchView(on_card_clicked=self.show_anime_detail, parent=self)
         self.bookmarks_view = BookmarksView(on_card_clicked=self.show_anime_detail, parent=self)
         self.downloads_view = DownloadsView(parent=self)
+        self.settings_view = SettingsView(parent=self)
         
         self.stacked_widget.addWidget(self.home_view)
         self.stacked_widget.addWidget(self.search_view)
         self.stacked_widget.addWidget(self.bookmarks_view)
         self.stacked_widget.addWidget(self.downloads_view)
+        self.stacked_widget.addWidget(self.settings_view)
         
         main_layout.addWidget(self.stacked_widget)
         

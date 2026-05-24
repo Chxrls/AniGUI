@@ -89,6 +89,13 @@ class Database:
                     expires_at TIMESTAMP
                 )
             """)
+            # Settings table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            """)
             conn.commit()
 
     # Watch History API
@@ -216,14 +223,23 @@ class Database:
             return [dict(row) for row in cur.fetchall()]
 
     # Downloads API
-    def add_download(self, anime_id: str, anime_title: str, episode_str: str, file_path: str, size: int = 0):
+    def add_download(self, anime_id: str, anime_title: str, episode_str: str, file_path: str, size: int = 0) -> int:
         with self._get_conn() as conn:
-            conn.execute(
+            cur = conn.execute(
                 """
                 INSERT INTO downloads (anime_id, anime_title, episode_str, file_path, file_size_bytes, status)
                 VALUES (?, ?, ?, ?, ?, 'queued')
                 """,
                 (anime_id, anime_title, episode_str, file_path, size)
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def update_download_status(self, download_id: int, status: str, size: int = 0):
+        with self._get_conn() as conn:
+            conn.execute(
+                "UPDATE downloads SET status = ?, file_size_bytes = ? WHERE id = ?",
+                (status, size, download_id)
             )
             conn.commit()
 
@@ -261,6 +277,24 @@ class Database:
                 VALUES (?, ?, ?)
                 """,
                 (key, value, expires_at)
+            )
+            conn.commit()
+
+    # Settings API
+    def get_setting(self, key: str, default: Any = None) -> Any:
+        with self._get_conn() as conn:
+            cur = conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
+            row = cur.fetchone()
+            return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str):
+        with self._get_conn() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO settings (key, value)
+                VALUES (?, ?)
+                """,
+                (key, value)
             )
             conn.commit()
 

@@ -257,13 +257,19 @@ class AnimeDetailDialog(QDialog):
             return
             
         ep_str = ep_data["number_str"]
+        translation_type = self.get_current_translation()
         
-        # Place temporary folder path for stub
-        file_path = os.path.expanduser(f"~/Downloads/{self.title}_Ep_{ep_str}.mp4")
+        # Retrieve user configured download path
+        download_dir = db.get_setting("download_path", "~/Downloads")
+        download_dir = os.path.expanduser(download_dir)
+        os.makedirs(download_dir, exist_ok=True)
         
-        # TODO: Wire up actual HLS downloader here in a background thread.
-        # Currently, we insert a stub record in the local SQLite downloads table.
-        db.add_download(
+        safe_title = "".join([c for c in self.title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+        file_path = os.path.join(download_dir, f"{safe_title}_Ep_{ep_str}.mp4")
+        
+        # Insert a stub record in the local SQLite downloads table.
+        print(f"Queueing download for {file_path}", flush=True)
+        download_id = db.add_download(
             anime_id=self.anime_id,
             anime_title=self.title,
             episode_str=ep_str,
@@ -271,5 +277,8 @@ class AnimeDetailDialog(QDialog):
             size=0
         )
         
-        self.status_label.setText(f"Queued Ep {ep_str} for download.")
+        from anigui.backend.worker import download_manager
+        download_manager.start_download(download_id, self.anime_id, ep_str, translation_type, file_path)
+        
+        self.status_label.setText(f"Started downloading Ep {ep_str}.")
         self.status_label.setStyleSheet("color: #c084fc;")
