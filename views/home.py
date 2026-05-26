@@ -16,6 +16,7 @@ from anigui.utils.theme import apply_theme
 import os
 import hashlib
 import time
+import json
 from typing import Callable, Optional
 
 import requests
@@ -29,6 +30,10 @@ from PyQt6.QtWidgets import (
     QScrollArea, QLabel, QPushButton, QFrame,
     QSizePolicy, QStackedWidget, QApplication,
 )
+
+from anigui.backend.db import db
+from anigui.backend.api import get_anilist_metadata
+from anigui.backend.worker import MetadataWorker, ThumbnailWorker
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -567,34 +572,172 @@ class ScheduleRow(QFrame):
 
 
 # ---------------------------------------------------------------------------
+# Continue Watching widgets
+# ---------------------------------------------------------------------------
+
+class ContinueWatchingCard(QFrame):
+    """Compact horizontal card for 'Continue Watching' row."""
+    def __init__(self, entry: dict, on_click: Callable[[dict], None], parent=None):
+        super().__init__(parent)
+        self.entry = entry
+        self.on_click = on_click
+        self.anime_data = None
+
+        self.setObjectName("AnimeCard")
+        self.setFixedWidth(240)
+        self.setFixedHeight(80)
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+        hl = QHBoxLayout(self)
+        hl.setContentsMargins(8, 8, 8, 8)
+        hl.setSpacing(10)
+
+        self.cover_label = QLabel()
+        self.cover_label.setFixedSize(45, 64)
+        self.cover_label.setObjectName("CardCover")
+        self.cover_label.setStyleSheet(apply_theme("background-color: #242424;"))
+        self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hl.addWidget(self.cover_label)
+
+        info_vl = QVBoxLayout()
+        info_vl.setSpacing(2)
+        
+        self.title_lbl = QLabel(_truncate(entry["anime_title"], 40))
+        self.title_lbl.setObjectName("CardTitle")
+        self.title_lbl.setWordWrap(True)
+        
+        self.ep_lbl = QLabel(f"Episode {entry['episode_str']}")
+        self.ep_lbl.setObjectName("CardMetadata")
+        
+        info_vl.addWidget(self.title_lbl)
+        info_vl.addWidget(self.ep_lbl)
+        info_vl.addStretch()
+        hl.addLayout(info_vl)
+
+        # Async metadata fetch
+        self._load_meta()
+
+    def _load_meta(self):
+        from PyQt6.QtCore import QThreadPool
+        worker = MetadataWorker(self.entry["anime_title"])
+        worker.signals.finished.connect(self._on_meta_loaded)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_meta_loaded(self, meta: dict):
+        if not meta:
+            return
+        self.anime_data = meta
+        cover_url = (meta.get("coverImage") or {}).get("large") or (meta.get("coverImage") or {}).get("medium")
+        if cover_url:
+            from PyQt6.QtCore import QThreadPool
+            worker = ThumbnailWorker(cover_url)
+            worker.signals.finished.connect(self._on_image_loaded)
+            QThreadPool.globalInstance().start(worker)
+
+    def _on_image_loaded(self, path: str):
+        if path and os.path.exists(path):
+            pm = QPixmap(path)
+            if not pm.isNull():
+                self.cover_label.setPixmap(pm.scaled(self.cover_label.size(), 
+                    Qt.AspectRatioMode.KeepAspectRatioByExpanding, 
+                    Qt.TransformationMode.SmoothTransformation))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.anime_data:
+            self.on_click(self.anime_data)
+        super().mousePressEvent(event)
+
+
+class ContinueWatchingRow(QWidget):
+    def __init__(self, on_click: Callable[[dict], None], parent=None):
+        super().__init__(parent)
+        self.on_click = on_click
+        self.hide() # Hidden by default
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(0, 0, 0, 10)
+        vl.setSpacing(8)
+
+        self.title_lbl = QLabel("Continue Watching")
+        self.title_lbl.setObjectName("ViewTitle")
+        self.title_lbl.setStyleSheet(apply_theme("font-size: 16px;"))
+        vl.addWidget(self.title_lbl)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFixedHeight(100)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll.setStyleSheet(apply_theme("QScrollArea { border: none; background: transparent; }"))
+
+        self.container = QWidget()
+        self.container.setObjectName("GridContainer")
+        self.hl = QHBoxLayout(self.container)
+        self.hl.setContentsMargins(0, 0, 0, 0)
+        self.hl.setSpacing(10)
+        self.hl.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.scroll.setWidget(self.container)
+        vl.addWidget(self.scroll)
+
+    def refresh(self):
+        # Clear
+        while self.hl.count():
+            item = self.hl.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        history = db.get_recent_watch_history(5)
+        if not history:
+            self.hide()
+            return
+
+        for entry in history:
+            card = ContinueWatchingCard(entry, self.on_click, self.container)
+            self.hl.addWidget(card)
+        
+        self.show()
+
+
+# ---------------------------------------------------------------------------
 # Reusable pill-button row (format tabs, section tabs, genre filters)
 # ---------------------------------------------------------------------------
 
 class PillRow(QWidget):
     def __init__(self, labels: list[str], on_select: Callable[[str], None],
-                 accent: str = "#c084fc", parent=None):
+                 accent: str = "#c084fc", parent=None, cols: int = 0):
         super().__init__(parent)
         self.on_select = on_select
         self.accent    = accent
         self._btns: dict[str, QPushButton] = {}
         self._active: str | None = None
 
-        hl = QHBoxLayout(self)
-        hl.setContentsMargins(0, 0, 0, 0)
-        hl.setSpacing(6)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        for label in labels:
+        layout = QGridLayout(self) if cols > 0 else QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        for i, label in enumerate(labels):
             btn = QPushButton(label)
             btn.setCheckable(True)
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn.setFixedHeight(28)
+            btn.setFixedWidth(115)
             btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             btn.clicked.connect(lambda checked, l=label: self._clicked(l))
             self._style_btn(btn, False)
-            hl.addWidget(btn)
+            if cols > 0:
+                layout.addWidget(btn, i // cols, i % cols)
+            else:
+                layout.addWidget(btn)
             self._btns[label] = btn
 
-        hl.addStretch()
+        if cols <= 0:
+            layout.addStretch()
+        else:
+            layout.setColumnStretch(cols, 1)
 
     def _style_btn(self, btn: QPushButton, active: bool):
         if active:
@@ -834,6 +977,7 @@ class HomeView(QWidget):
 
         # --- Row 2: Section tabs (rebuilt dynamically when format changes) ---
         self._section_container = QWidget(self)
+        self._section_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._section_layout = QHBoxLayout(self._section_container)
         self._section_layout.setContentsMargins(0, 0, 0, 0)
         self._section_tabs: PillRow | None = None
@@ -841,25 +985,12 @@ class HomeView(QWidget):
         root.addWidget(self._section_container)
 
         # --- Row 3: Genre filter (hidden for Airing Now, Upcoming, Schedule) ---
-        self._genre_scroll = QScrollArea()
-        self._genre_scroll.setWidgetResizable(True)
-        self._genre_scroll.setFixedHeight(44)
-        self._genre_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._genre_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self._genre_scroll.setStyleSheet(apply_theme(
-            "QScrollArea { border: none; background: transparent; }"
-        ))
-        genre_inner = QWidget()
-        genre_inner.setObjectName("GridContainer")
-        genre_hl = QHBoxLayout(genre_inner)
-        genre_hl.setContentsMargins(0, 6, 0, 6)
-        genre_hl.setSpacing(6)
+        self._genre_pills = PillRow(GENRES, self._on_genre_select, accent="#a855f7", parent=self, cols=5)
+        root.addWidget(self._genre_pills)
 
-        self._genre_pills = PillRow(GENRES, self._on_genre_select, accent="#a855f7", parent=genre_inner)
-        genre_hl.addWidget(self._genre_pills)
-
-        self._genre_scroll.setWidget(genre_inner)
-        root.addWidget(self._genre_scroll)
+        # --- Row 4: Continue Watching ---
+        self._continue_watching = ContinueWatchingRow(on_click=self._handle_card_click, parent=self)
+        root.addWidget(self._continue_watching)
 
         # --- Content stack: card grid vs schedule panel ---
         self._stack = QStackedWidget(self)
@@ -873,7 +1004,14 @@ class HomeView(QWidget):
         root.addWidget(self._stack)
 
         # Load default section on first show
-        QTimer.singleShot(0, lambda: self._load_section("Trending"))
+        QTimer.singleShot(0, self._initial_load)
+
+    def _initial_load(self):
+        self.refresh_continue_watching()
+        self._load_section("Trending")
+
+    def refresh_continue_watching(self):
+        self._continue_watching.refresh()
 
     # ------------------------------------------------------------------
     # Section tab management
@@ -952,7 +1090,7 @@ class HomeView(QWidget):
         self._active_section = available[0]
 
         # Show genre strip only if current section supports it
-        self._genre_scroll.setVisible(self._active_section in GENRE_SECTIONS)
+        self._genre_pills.setVisible(self._active_section in GENRE_SECTIONS)
 
         # Show card grid (not schedule)
         self._stack.setCurrentIndex(0)
@@ -969,7 +1107,7 @@ class HomeView(QWidget):
         self._genre_pills._set_active(None)
 
         # Show/hide genre strip — only visible for Trending/Popular/Top Rated
-        self._genre_scroll.setVisible(section in GENRE_SECTIONS)
+        self._genre_pills.setVisible(section in GENRE_SECTIONS)
 
         if section == "Schedule":
             self._stack.setCurrentIndex(1)

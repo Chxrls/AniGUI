@@ -99,7 +99,9 @@ class MainWindow(QMainWindow):
             btn.style().polish(btn)
             
         # Refresh dynamic database views on selection
-        if index == 2:  # Bookmarks
+        if index == 0:  # Home
+            self.home_view.refresh_continue_watching()
+        elif index == 2:  # Bookmarks
             self.bookmarks_view.refresh()
         elif index == 3:  # Downloads
             self.downloads_view.refresh()
@@ -110,5 +112,7 @@ class MainWindow(QMainWindow):
         
         # Refresh current views in case bookmarks, watch state, or downloads changed
         current_idx = self.stacked_widget.currentIndex()
-        if current_idx == 2:
+        if current_idx == 0:
+            self.home_view.refresh_continue_watching()
+        elif current_idx == 2:
             self.bookmarks_view.refresh()

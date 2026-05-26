@@ -216,6 +216,18 @@ class Database:
             row = cur.fetchone()
             return row["episode_str"] if row else None
 
+    def get_recent_watch_history(self, limit: int = 5) -> list[dict]:
+        with self._get_conn() as conn:
+            cur = conn.execute(
+                """
+                SELECT * FROM watch_history
+                ORDER BY watched_at DESC
+                LIMIT ?
+                """,
+                (limit,)
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     # Bookmarks API
     def add_bookmark(self, anime_id: str, anime_title: str, thumbnail_url: str, sub_count: int, dub_count: int):
         with self._get_conn() as conn:
