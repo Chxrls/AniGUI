@@ -11,6 +11,7 @@ Worker model: QThread per fetch, signals back to UI thread.
 """
 
 from __future__ import annotations
+from anigui.utils.theme import apply_theme
 
 import os
 import hashlib
@@ -459,9 +460,9 @@ class AnimeCard(QFrame):
         self.cover_label.setFixedSize(CARD_IMG_W, CARD_IMG_H)
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.cover_label.setObjectName("CardCover")
-        self.cover_label.setStyleSheet(
+        self.cover_label.setStyleSheet(apply_theme(
             "background-color: #242424; color: #888888;"
-        )
+        ))
 
         title_text = (anime.get("title") or {}).get("english") or \
                      (anime.get("title") or {}).get("romaji") or "Unknown"
@@ -540,7 +541,7 @@ class ScheduleRow(QFrame):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("color: #2e2e2e;")
+        sep.setStyleSheet(apply_theme("color: #2e2e2e;"))
 
         title_lbl = QLabel(_truncate(title_text, 55))
         title_lbl.setObjectName("CardTitle")
@@ -597,16 +598,16 @@ class PillRow(QWidget):
 
     def _style_btn(self, btn: QPushButton, active: bool):
         if active:
-            btn.setStyleSheet(
+            btn.setStyleSheet(apply_theme(
                 f"QPushButton {{ background-color: {self.accent}; color: #0f0f0f; "
                 f"border: none; border-radius: 14px; padding: 0 12px; font-weight: bold; }}"
-            )
+            ))
         else:
-            btn.setStyleSheet(
+            btn.setStyleSheet(apply_theme(
                 "QPushButton { background-color: #242424; color: #888888; "
                 "border: 1px solid #2e2e2e; border-radius: 14px; padding: 0 12px; }"
                 "QPushButton:hover { color: #e8e8e8; border-color: #888888; }"
-            )
+            ))
 
     def _clicked(self, label: str):
         if self._active == label:
@@ -648,7 +649,7 @@ class CardGrid(QScrollArea):
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setObjectName("CardGridScroll")
-        self.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        self.setStyleSheet(apply_theme("QScrollArea { background: transparent; border: none; }"))
 
         self._container = QWidget()
         self._container.setObjectName("GridContainer")
@@ -744,7 +745,7 @@ class SchedulePanel(QWidget):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setObjectName("CardGridScroll")
-        self._scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        self._scroll.setStyleSheet(apply_theme("QScrollArea { background: transparent; border: none; }"))
 
         self._list_widget = QWidget()
         self._list_widget.setObjectName("GridContainer")
@@ -845,9 +846,9 @@ class HomeView(QWidget):
         self._genre_scroll.setFixedHeight(44)
         self._genre_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._genre_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self._genre_scroll.setStyleSheet(
+        self._genre_scroll.setStyleSheet(apply_theme(
             "QScrollArea { border: none; background: transparent; }"
-        )
+        ))
         genre_inner = QWidget()
         genre_inner.setObjectName("GridContainer")
         genre_hl = QHBoxLayout(genre_inner)

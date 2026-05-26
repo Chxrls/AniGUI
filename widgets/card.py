@@ -1,3 +1,4 @@
+from anigui.utils.theme import apply_theme
 import os
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel, QWidget
 from PyQt6.QtCore import pyqtSignal, Qt, QThreadPool
@@ -47,7 +48,7 @@ class AnimeCard(QFrame):
         self.image_label.setObjectName("CardImage")
         
         # Placeholder style while loading
-        self.image_label.setStyleSheet("background-color: #242424; color: #888888;")
+        self.image_label.setStyleSheet(apply_theme("background-color: #242424; color: #888888;"))
         self.image_label.setText("Loading...")
         self.layout.addWidget(self.image_label)
         
@@ -127,7 +128,7 @@ class AnimeCard(QFrame):
     def _on_metadata_failed(self, err_msg: str):
         # Fallback to grey placeholder with truncated title centered
         self.image_label.setText(self.title[:15] + "...")
-        self.image_label.setStyleSheet("background-color: #242424; color: #888888; border: 1px dashed #2e2e2e;")
+        self.image_label.setStyleSheet(apply_theme("background-color: #242424; color: #888888; border: 1px dashed #2e2e2e;"))
 
     def set_image_from_path(self, path: str):
         if path and os.path.exists(path):

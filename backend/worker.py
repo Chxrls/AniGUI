@@ -28,7 +28,15 @@ class DownloadManager(QObject):
     def __init__(self):
         super().__init__()
         self.active_workers = {}
+        self.thread_pool = QThreadPool()
+        from anigui.backend.db import db
+        max_downloads = int(db.get_setting("max_concurrent_downloads", "3"))
+        self.thread_pool.setMaxThreadCount(max_downloads)
         
+    def update_max_downloads(self, count: int):
+        self.thread_pool.setMaxThreadCount(count)
+        
+
     def start_download(self, download_id, anime_id, ep_str, translation_type, file_path):
         from anigui.backend.db import db
         from anigui.backend.worker import DownloadWorker
@@ -36,7 +44,7 @@ class DownloadManager(QObject):
         self.active_workers[download_id] = worker
         db.update_download_status(download_id, "downloading")
         self.status_changed.emit(download_id, "downloading")
-        QThreadPool.globalInstance().start(worker)
+        self.thread_pool.start(worker)
         
     def pause_download(self, download_id):
         worker = self.active_workers.get(download_id)

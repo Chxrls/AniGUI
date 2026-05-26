@@ -1,3 +1,4 @@
+from anigui.utils.theme import apply_theme
 from PyQt6.QtWidgets import (
     QDialog, QHBoxLayout, QVBoxLayout, QLabel, 
     QComboBox, QListWidget, QListWidgetItem, QPushButton, QWidget, QScrollArea, QMenu
@@ -58,7 +59,7 @@ class AnimeDetailWidget(QWidget):
                     Qt.TransformationMode.SmoothTransformation
                 ))
         else:
-            self.cover_label.setStyleSheet("background-color: #242424; color: #888888; border: 1px dashed #2e2e2e;")
+            self.cover_label.setStyleSheet(apply_theme("background-color: #242424; color: #888888; border: 1px dashed #2e2e2e;"))
             self.cover_label.setText("No Image")
         top_layout.addWidget(self.cover_label, alignment=Qt.AlignmentFlag.AlignTop)
         
@@ -96,7 +97,7 @@ class AnimeDetailWidget(QWidget):
         self.synopsis_scroll = QScrollArea(self)
         self.synopsis_scroll.setWidgetResizable(True)
         self.synopsis_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.synopsis_scroll.setStyleSheet("background: transparent; border: none;")
+        self.synopsis_scroll.setStyleSheet(apply_theme("background: transparent; border: none;"))
         self.synopsis_scroll.setWidget(self.synopsis_label)
         
         info_layout.addWidget(self.synopsis_scroll)
@@ -116,6 +117,12 @@ class AnimeDetailWidget(QWidget):
             # Default fallback if counts are missing
             self.trans_selector.addItem("Sub", "sub")
             self.trans_selector.addItem("Dub", "dub")
+            
+        default_trans = db.get_setting("default_translation", "sub")
+        index = self.trans_selector.findData(default_trans)
+        if index != -1:
+            self.trans_selector.setCurrentIndex(index)
+            
         self.trans_selector.currentIndexChanged.connect(self.load_episodes)
         controls_layout.addWidget(self.trans_selector)
         
@@ -226,7 +233,7 @@ class AnimeDetailWidget(QWidget):
         translation_type = self.get_current_translation()
         
         self.status_label.setText("Resolving stream URL...")
-        self.status_label.setStyleSheet("color: #c084fc;")  # Accent status
+        self.status_label.setStyleSheet(apply_theme("color: #c084fc;"))  # Accent status
         
         # Async stream resolution
         worker = EpisodeResolveWorker(self.anime_id, ep_str, translation_type)
@@ -236,7 +243,7 @@ class AnimeDetailWidget(QWidget):
 
     def _on_stream_resolved(self, url: str, ep_str: str, translation_type: str):
         self.status_label.setText("Success")
-        self.status_label.setStyleSheet("color: #888888;")
+        self.status_label.setStyleSheet(apply_theme("color: #888888;"))
         
         try:
             # Play using mpv and record watched log
@@ -254,14 +261,14 @@ class AnimeDetailWidget(QWidget):
 
     def _on_stream_failed(self, err_msg: str):
         self.status_label.setText(f"Error: {err_msg}")
-        self.status_label.setStyleSheet("color: #f87171;")  # Error red
+        self.status_label.setStyleSheet(apply_theme("color: #f87171;"))  # Error red
 
     def queue_download(self):
         # Find currently highlighted item in list
         selected_items = self.episode_list_widget.selectedItems()
         if not selected_items:
             self.status_label.setText("Select an episode to download first.")
-            self.status_label.setStyleSheet("color: #f87171;")
+            self.status_label.setStyleSheet(apply_theme("color: #f87171;"))
             return
             
         item = selected_items[0]
@@ -294,14 +301,14 @@ class AnimeDetailWidget(QWidget):
         download_manager.start_download(download_id, self.anime_id, ep_str, translation_type, file_path)
         
         self.status_label.setText(f"Started downloading Ep {ep_str}.")
-        self.status_label.setStyleSheet("color: #c084fc;")
+        self.status_label.setStyleSheet(apply_theme("color: #c084fc;"))
 
     def queue_download_all(self):
         translation_type = self.get_current_translation()
         ep_list = fetch_episodes(self.anime_data, translation_type)
         if not ep_list:
             self.status_label.setText("No episodes found to download.")
-            self.status_label.setStyleSheet("color: #f87171;")
+            self.status_label.setStyleSheet(apply_theme("color: #f87171;"))
             return
             
         download_dir = db.get_setting("download_path", "~/Downloads")
@@ -332,10 +339,10 @@ class AnimeDetailWidget(QWidget):
             
         if count > 0:
             self.status_label.setText(f"Queued {count} new episodes for download.")
-            self.status_label.setStyleSheet("color: #c084fc;")
+            self.status_label.setStyleSheet(apply_theme("color: #c084fc;"))
         else:
             self.status_label.setText("All episodes already exist on disk.")
-            self.status_label.setStyleSheet("color: #888888;")
+            self.status_label.setStyleSheet(apply_theme("color: #888888;"))
 
 class AnimeDetailDialog(QDialog):
     """Popup wrapper for AnimeDetailWidget for backward compatibility."""

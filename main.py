@@ -6,9 +6,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from anigui.backend.api import check_mpv_installed
+from anigui.backend.db import db
 from anigui.window import MainWindow
 
-QSS_STYLESHEET = """
+QSS_STYLESHEET_TEMPLATE = """
 /* General Styles */
 QMainWindow, QDialog, QWidget#GridContainer {
     background-color: #0f0f0f;
@@ -250,6 +251,13 @@ QLineEdit#SearchInput:focus {
 }
 """
 
+def get_stylesheet(theme: str = "dark") -> str:
+    if theme == "dark":
+        return QSS_STYLESHEET_TEMPLATE
+    
+    from anigui.utils.theme import apply_theme
+    return apply_theme(QSS_STYLESHEET_TEMPLATE)
+
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("AniGUI")
@@ -271,8 +279,9 @@ def main():
         msg.exec()
         sys.exit(1)
         
-    # Apply global QSS dark stylesheet
-    app.setStyleSheet(QSS_STYLESHEET)
+    # Load user theme and apply stylesheet
+    user_theme = db.get_setting("theme", "dark")
+    app.setStyleSheet(get_stylesheet(user_theme))
     
     # Load Main Window
     window = MainWindow()

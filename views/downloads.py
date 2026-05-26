@@ -1,3 +1,4 @@
+from anigui.utils.theme import apply_theme
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QHeaderView, QPushButton, QMessageBox, QProgressBar
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
@@ -118,7 +119,7 @@ class DownloadsView(QWidget):
             else:
                 p_bar.setValue(0)
             p_label = QLabel(size)
-            p_label.setStyleSheet("font-size: 10px; color: #888888;")
+            p_label.setStyleSheet(apply_theme("font-size: 10px; color: #888888;"))
             p_layout.addWidget(p_bar)
             p_layout.addWidget(p_label)
             self.table.setCellWidget(row_idx, 3, progress_widget)
@@ -236,7 +237,17 @@ class DownloadsView(QWidget):
             return
             
         try:
-            cmd = ["mpv", "--no-terminal", file_path]
+            player_path = db.get_setting("player_path", "mpv")
+            hwdec_enabled = db.get_setting("hwdec_enabled", "false")
+            
+            cmd = [player_path]
+            is_mpv = "mpv" in player_path.lower()
+            if is_mpv:
+                cmd.append("--no-terminal")
+                if hwdec_enabled == "true":
+                    cmd.append("--hwdec=auto")
+            cmd.append(file_path)
+
             kwargs = {"start_new_session": True}
             if os.name == "nt":
                 si = subprocess.STARTUPINFO()
@@ -244,10 +255,10 @@ class DownloadsView(QWidget):
                 kwargs["startupinfo"] = si
             subprocess.Popen(cmd, **kwargs)
         except FileNotFoundError:
-            print("mpv not found! Falling back to default player.")
+            print(f"Player '{player_path}' not found! Falling back to default player.")
             url = QUrl.fromLocalFile(file_path)
             QDesktopServices.openUrl(url)
         except Exception as e:
-            print(f"Error launching mpv: {e}")
+            print(f"Error launching player: {e}")
 
 

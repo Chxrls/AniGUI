@@ -1,3 +1,4 @@
+from anigui.utils.theme import apply_theme
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QGridLayout, QLabel, QMenu
 from PyQt6.QtCore import Qt, QPoint
 from anigui.backend.db import db
@@ -23,19 +24,19 @@ class BookmarksView(QWidget):
         self.left_container = QWidget(self)
         self.left_container.setMinimumWidth(450)
         self.left_container.setObjectName("BookmarksLeftPanel")
-        self.left_container.setStyleSheet("""
+        self.left_container.setStyleSheet(apply_theme("""
             QWidget#BookmarksLeftPanel {
                 background-color: #161616;
                 border: 1px solid #2e2e2e;
                 border-radius: 8px;
             }
-        """)
+        """))
         self.left_panel_layout = QVBoxLayout(self.left_container)
         self.left_panel_layout.setContentsMargins(10, 10, 10, 10)
         
         self.placeholder_label = QLabel("Select a bookmark to view details.", self.left_container)
         self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.placeholder_label.setStyleSheet("color: #888888; font-size: 14px; border: none;")
+        self.placeholder_label.setStyleSheet(apply_theme("color: #888888; font-size: 14px; border: none;"))
         self.left_panel_layout.addWidget(self.placeholder_label)
         self.current_detail = None
         

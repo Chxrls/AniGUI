@@ -155,6 +155,27 @@ class Database:
                     (anime_id, anime_title, episode_str, translation_type, position, duration, watched)
                 )
             conn.commit()
+            
+        if watched == 1 and self.get_setting("auto_delete_downloads", "false") == "true":
+            self.auto_delete_download(anime_id, episode_str)
+
+    def auto_delete_download(self, anime_id: str, episode_str: str):
+        import os
+        with self._get_conn() as conn:
+            cur = conn.execute(
+                "SELECT id, file_path FROM downloads WHERE anime_id = ? AND episode_str = ?",
+                (anime_id, episode_str)
+            )
+            rows = cur.fetchall()
+            for row in rows:
+                file_path = row["file_path"]
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                    except Exception as e:
+                        print(f"Error auto-deleting file {file_path}: {e}")
+                conn.execute("DELETE FROM downloads WHERE id = ?", (row["id"],))
+            conn.commit()
 
     def get_playback_position(self, anime_id: str, episode_str: str, translation_type: str = "sub") -> float:
         with self._get_conn() as conn:
@@ -279,6 +300,16 @@ class Database:
                 (key, value, expires_at)
             )
             conn.commit()
+
+    def clear_cache(self):
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM api_cache")
+            conn.commit()
+
+    def get_db_size(self) -> int:
+        if os.path.exists(DB_PATH):
+            return os.path.getsize(DB_PATH)
+        return 0
 
     # Settings API
     def get_setting(self, key: str, default: Any = None) -> Any:
