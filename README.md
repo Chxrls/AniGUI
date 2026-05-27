@@ -5,7 +5,7 @@ AniGUI is a native desktop client prototype for streaming anime.
 ![landing page](repoAssets/AniGUI_LandingPage.png)
 
 ## How to Download/Use the Application
-1. Download and extract the .zip file found in the release: https://github.com/Chxrls/AniGUI/releases/tag/v1.0.1
+1. Download and extract the .zip file found in the release: https://github.com/Chxrls/AniGUI/releases
 2. Open the extracted folder and run the .exe file.
 3. For better Quality of life. You may make a shortcut for the AniGUI.exe and have it in your desktop.
 
@@ -22,7 +22,7 @@ AniGUI is a native desktop client prototype for streaming anime.
 This application requires `mpv` to be installed and available on your system's `PATH`.
 - **Windows:** Download from [mpv.io](https://mpv.io/installation/) or install via package manager:
   ```powershell
-  choco install mpv
+  winget install mpv
   ```
 - **macOS:** Install via Homebrew:
   ```bash
