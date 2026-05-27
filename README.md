@@ -22,7 +22,7 @@ AniGUI is a native desktop client prototype for streaming anime.
 This application requires `mpv` to be installed and available on your system's `PATH`.
 - **Windows:** Download from [mpv.io](https://mpv.io/installation/) or install via package manager:
   ```powershell
-  choco install mpv
+  winget install mpv
   ```
 - **macOS:** Install via Homebrew:
   ```bash

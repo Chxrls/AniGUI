@@ -627,6 +627,10 @@ class ContinueWatchingCard(QFrame):
         if not meta:
             return
         self.anime_data = meta
+        # Preserve the AllAnime ID from watch history so the detail view
+        # uses the correct anime instead of doing a lossy title re-search.
+        if self.entry.get("anime_id"):
+            self.anime_data["_allanime_id"] = self.entry["anime_id"]
         cover_url = (meta.get("coverImage") or {}).get("large") or (meta.get("coverImage") or {}).get("medium")
         if cover_url:
             from PyQt6.QtCore import QThreadPool
@@ -1041,6 +1045,16 @@ class HomeView(QWidget):
         """Resolve the AllAnime streaming ID for this anime, then open
         the detail dialog with merged AniList + AllAnime data."""
         app_dict = _anilist_to_app_dict(anime_raw)
+
+        # If we already have an AllAnime ID (e.g., from Continue Watching
+        # watch history), use it directly instead of doing a title-based
+        # re-search that may resolve to the wrong anime in a franchise.
+        existing_allanime_id = anime_raw.get("_allanime_id")
+        if existing_allanime_id:
+            app_dict["id"] = existing_allanime_id
+            self.on_card_clicked(app_dict)
+            return
+
         # Prefer romaji title for AllAnime search (AllAnime indexes by romaji)
         title_obj = anime_raw.get("title") or {}
         search_title = title_obj.get("romaji") or title_obj.get("english") or app_dict.get("name") or "Unknown"
