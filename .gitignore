@@ -58,3 +58,7 @@ venv.bak/
 # Project specific ignores
 not_needed/
 refactor_styles.py
+
+# Build artifacts
+vendor/
+Output/

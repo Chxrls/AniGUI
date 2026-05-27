@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import sys
 from urllib.parse import quote
+
+from anigui.utils.paths import get_mpv_path
 import requests
 from Crypto.Cipher import AES
 
@@ -25,7 +27,7 @@ AES_KEY_PHRASE = "Xot36i3lK3:v1"
 AES_KEY = hashlib.sha256(AES_KEY_PHRASE.encode()).digest()
 
 def check_mpv_installed() -> bool:
-    return shutil.which("mpv") is not None
+    return get_mpv_path() is not None
 
 def gql_post(query: str, variables: dict | None = None) -> dict:
     payload = {"query": query}
@@ -213,7 +215,7 @@ def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = 
     episode = decrypted.get("episode", decrypted) if isinstance(decrypted, dict) else {}
     source_urls = episode.get("sourceUrls", [])
     if not source_urls:
-        raise RuntimeError("No source URLs found in decrypted episode data.")
+        raise RuntimeError("The source currently has no video links available for this episode.")
 
     source_urls.sort(key=lambda s: float(s.get("priority", 0)), reverse=True)
     errors = []
@@ -291,6 +293,12 @@ def launch_player(url: str, episode_label: str) -> None:
     player_path = db.get_setting("player_path", "mpv")
     hwdec_enabled = db.get_setting("hwdec_enabled", "false")
     default_quality = db.get_setting("default_quality", "auto")
+    
+    # Resolve bundled MPV when using the default setting
+    if player_path == "mpv":
+        resolved = get_mpv_path()
+        if resolved:
+            player_path = resolved
     
     cmd = [player_path]
     is_mpv = "mpv" in player_path.lower()

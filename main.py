@@ -5,8 +5,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtGui import QIcon
 from anigui.backend.api import check_mpv_installed
 from anigui.backend.db import db
+from anigui.utils.paths import get_icon_path
 from anigui.window import MainWindow
 
 QSS_STYLESHEET_TEMPLATE = """
@@ -295,6 +297,11 @@ def get_stylesheet(theme: str = "dark") -> str:
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("AniGUI")
+    
+    # Set application icon (taskbar, window title bar, alt-tab)
+    icon_path = get_icon_path()
+    if icon_path:
+        app.setWindowIcon(QIcon(icon_path))
     
     # Check if mpv media player dependency is on path
     if not check_mpv_installed():

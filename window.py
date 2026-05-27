@@ -1,10 +1,13 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QStackedWidget, QLabel
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
+from anigui.utils.paths import get_icon_path
 from anigui.views.home import HomeView
 from anigui.views.search import SearchView
 from anigui.views.bookmarks import BookmarksView
 from anigui.views.downloads import DownloadsView
 from anigui.views.settings import SettingsView
+from anigui.views.about import AboutView
 from anigui.views.detail import AnimeDetailDialog
 
 class MainWindow(QMainWindow):
@@ -14,6 +17,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("AniGUI")
         self.setMinimumSize(1100, 640)
         self.setObjectName("MainWindow")
+        
+        # Set window icon
+        icon_path = get_icon_path()
+        if icon_path:
+            self.setWindowIcon(QIcon(icon_path))
+        
         self.showMaximized()
         
         # Central widget and layout
@@ -64,6 +73,21 @@ class MainWindow(QMainWindow):
             self.nav_buttons[index] = btn
             
         sidebar_layout.addStretch()  # Push nav buttons up
+        
+        # "About" label pinned to the bottom of the sidebar
+        self.about_label = QLabel("  About", sidebar)
+        self.about_label.setObjectName("nav_about")
+        self.about_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.about_label.setFixedHeight(32)
+        self.about_label.setStyleSheet(
+            "QLabel#nav_about {"
+            "  color: #888888; font-size: 11px; padding-left: 15px;"
+            "}"
+            "QLabel#nav_about:hover { color: #c084fc; }"
+        )
+        self.about_label.mousePressEvent = lambda _: self.switch_view(5)
+        sidebar_layout.addWidget(self.about_label)
+        
         main_layout.addWidget(sidebar)
         
         # --- CENTRAL VIEWS STACK ---
@@ -76,12 +100,14 @@ class MainWindow(QMainWindow):
         self.bookmarks_view = BookmarksView(on_card_clicked=self.show_anime_detail, parent=self)
         self.downloads_view = DownloadsView(parent=self)
         self.settings_view = SettingsView(parent=self)
+        self.about_view = AboutView(parent=self)
         
         self.stacked_widget.addWidget(self.home_view)
         self.stacked_widget.addWidget(self.search_view)
         self.stacked_widget.addWidget(self.bookmarks_view)
         self.stacked_widget.addWidget(self.downloads_view)
         self.stacked_widget.addWidget(self.settings_view)
+        self.stacked_widget.addWidget(self.about_view)
         
         main_layout.addWidget(self.stacked_widget)
         
@@ -99,6 +125,16 @@ class MainWindow(QMainWindow):
             btn.style().unpolish(btn)
             btn.style().polish(btn)
             
+        # Update About label highlight (it's outside the normal nav_buttons dict)
+        is_about = (index == 5)
+        self.about_label.setStyleSheet(
+            "QLabel#nav_about {"
+            f"  color: {'#c084fc' if is_about else '#888888'};"
+            "  font-size: 11px; padding-left: 15px;"
+            "}"
+            "QLabel#nav_about:hover { color: #c084fc; }"
+        )
+        
         # Refresh dynamic database views on selection
         if index == 0:  # Home
             self.home_view.refresh_continue_watching()
@@ -106,6 +142,8 @@ class MainWindow(QMainWindow):
             self.bookmarks_view.refresh()
         elif index == 3:  # Downloads
             self.downloads_view.refresh()
+        elif index == 5:  # About
+            self.about_view.refresh_status()
 
     def show_anime_detail(self, anime_data: dict):
         dialog = AnimeDetailDialog(anime_data, self)

@@ -1,4 +1,5 @@
 from anigui.utils.theme import apply_theme
+from anigui.utils.paths import get_mpv_path
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QHeaderView, QPushButton, QMessageBox, QProgressBar
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
@@ -239,6 +240,12 @@ class DownloadsView(QWidget):
         try:
             player_path = db.get_setting("player_path", "mpv")
             hwdec_enabled = db.get_setting("hwdec_enabled", "false")
+            
+            # Resolve bundled MPV when using the default setting
+            if player_path == "mpv":
+                resolved = get_mpv_path()
+                if resolved:
+                    player_path = resolved
             
             cmd = [player_path]
             is_mpv = "mpv" in player_path.lower()
