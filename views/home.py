@@ -28,7 +28,7 @@ from PyQt6.QtGui import QPixmap, QCursor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QScrollArea, QLabel, QPushButton, QFrame,
-    QSizePolicy, QStackedWidget, QApplication,
+    QSizePolicy, QStackedWidget, QApplication, QComboBox,
 )
 
 from anigui.backend.db import db
@@ -519,7 +519,7 @@ class ScheduleRow(QFrame):
         super().__init__(parent)
         self.setObjectName("AnimeCard")
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.setFixedHeight(56)
 
         media   = entry.get("media") or {}
@@ -657,7 +657,8 @@ class ContinueWatchingRow(QWidget):
         super().__init__(parent)
         self.on_click = on_click
         self.hide() # Hidden by default
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         vl = QVBoxLayout(self)
         vl.setContentsMargins(0, 0, 0, 10)
@@ -969,32 +970,48 @@ class HomeView(QWidget):
         root.setContentsMargins(20, 16, 20, 16)
         root.setSpacing(10)
 
-        # --- Row 1: Media format tabs ---
-        self._format_tabs = PillRow(
-            FORMATS,
-            self._on_format_select,
-            accent="#c084fc",
-            parent=self,
-        )
-        self._format_tabs.set_active("TV Series")
-        root.addWidget(self._format_tabs)
+        # --- Unified Control Bar (Dropdown + Tabs) ---
+        self._control_bar = QHBoxLayout()
+        self._control_bar.setSpacing(16)
+        self._control_bar.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+
+        # --- Row 1: Media format dropdown ---
+        # Added a horizontal layout so the dropdown menu does not stretch to the whole screen
+        self._format_layout = QHBoxLayout()
+        # Instantiate the ComboBox
+        self._format_combo = QComboBox()
+        self._format_combo.setObjectName("FormatCombo")
+        self._format_combo.addItems(FORMATS)
+        self._format_combo.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        # Connect the Event Listener (Signal -> Slot)
+        self._format_combo.currentTextChanged.connect(self._on_format_select)
+        # Add to the UI Tree
+        self._format_layout.addWidget(self._format_combo)
+        self._control_bar.addLayout(self._format_layout)
 
         # --- Row 2: Section tabs (rebuilt dynamically when format changes) ---
         self._section_container = QWidget(self)
         self._section_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._section_layout = QHBoxLayout(self._section_container)
-        self._section_layout.setContentsMargins(0, 0, 0, 0)
+        self._section_layout.setContentsMargins(0, 0, 0, 0) 
         self._section_tabs: PillRow | None = None
         self._build_section_tabs(FORMAT_SECTIONS["TV Series"])
-        root.addWidget(self._section_container)
+        self._control_bar.addWidget(self._section_container)
 
-        # --- Row 3: Genre filter (hidden for Airing Now, Upcoming, Schedule) ---
-        self._genre_pills = PillRow(GENRES, self._on_genre_select, accent="#a855f7", parent=self, cols=5)
+        # push to the left
+        self._control_bar.addStretch()
+        root.addLayout(self._control_bar)
+
+        # --- row 2 ---
+        self._genre_pills = PillRow(GENRES, self._on_genre_select, accent="#a855f7", parent=self, cols=8)
+        self._genre_pills.setContentsMargins(0, 0, 0, 0)
+
         root.addWidget(self._genre_pills)
 
-        # --- Row 4: Continue Watching ---
+        # Continue-watching row (hidden when empty)
         self._continue_watching = ContinueWatchingRow(on_click=self._handle_card_click, parent=self)
         root.addWidget(self._continue_watching)
+
 
         # --- Content stack: card grid vs schedule panel ---
         self._stack = QStackedWidget(self)
