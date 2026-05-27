@@ -207,7 +207,7 @@ class DownloadsView(QWidget):
     def delete_single(self, download_id: int):
         reply = QMessageBox.question(
             self, 'Confirm Deletion',
-            'Are you sure you want to delete this download?\\nThis will also delete the file from your disk.',
+            'Are you sure you want to delete this download? \nThis will also delete the file from your disk.',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )

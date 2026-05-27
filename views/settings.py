@@ -3,9 +3,9 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit
 from PyQt6.QtCore import Qt
 from anigui.backend.db import db
 import os
+import sys
 
 class SettingsView(QWidget):
-    """View for application settings, including configuring download directory."""
     def __init__(self, parent=None):
         super().__init__(parent)
         
@@ -190,8 +190,15 @@ class SettingsView(QWidget):
             
         self.theme_combo.currentIndexChanged.connect(self.update_theme)
         
+        # Add Restart button
+        self.restart_btn = QPushButton("Restart to Apply", self.settings_container)
+        self.restart_btn.setObjectName("DownloadButton")
+        self.restart_btn.clicked.connect(self.restart_app)
+        self.restart_btn.hide() # Hidden initially
+        
         self.theme_layout.addWidget(self.theme_label)
         self.theme_layout.addWidget(self.theme_combo)
+        self.theme_layout.addWidget(self.restart_btn)
         self.theme_layout.addStretch()
         self.settings_layout.addLayout(self.theme_layout)
 
@@ -294,4 +301,12 @@ class SettingsView(QWidget):
         
     def update_theme(self):
         val = self.theme_combo.currentData()
-        db.set_setting("theme", val)
+        current_db_theme = db.get_setting("theme", "dark")
+        if val != current_db_theme:
+            db.set_setting("theme", val)
+            self.restart_btn.show()
+            
+    def restart_app(self):
+        from PyQt6.QtWidgets import QApplication
+        QApplication.quit()
+        os.execl(sys.executable, sys.executable, *sys.argv)

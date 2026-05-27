@@ -33,6 +33,25 @@ class AnimeDetailWidget(QWidget):
         # Local thumbnail path
         self.thumb_path = self.anime_data.get("thumbnail_url_local") or ""
         
+        if not self.thumb_path:
+            cover_url = self.anime_data.get("thumbnail_url") or ""
+            if not cover_url:
+                cover_dict = self.anime_data.get("coverImage") or {}
+                cover_url = cover_dict.get("large") or cover_dict.get("medium") or ""
+            if cover_url:
+                import hashlib
+                thumb_dir = os.path.expanduser("~/.config/anigui/thumbnails")
+                # Try sha256 format (worker.py ThumbnailWorker)
+                sha_name = hashlib.sha256(cover_url.encode("utf-8")).hexdigest()[:16] + ".jpg"
+                sha_path = os.path.join(thumb_dir, sha_name)
+                # Try md5 format (home.py load_image)
+                md5_name = hashlib.md5(cover_url.encode()).hexdigest() + ".jpg"
+                md5_path = os.path.join(thumb_dir, md5_name)
+                if os.path.exists(sha_path):
+                    self.thumb_path = sha_path
+                elif os.path.exists(md5_path):
+                    self.thumb_path = md5_path
+        
         # Widget attributes
         self.setObjectName("DetailWidget")
         

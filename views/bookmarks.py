@@ -26,7 +26,7 @@ class BookmarksView(QWidget):
         self.left_container.setObjectName("BookmarksLeftPanel")
         self.left_container.setStyleSheet(apply_theme("""
             QWidget#BookmarksLeftPanel {
-                background-color: #161616;
+                background-color: #1a1a1a;
                 border: 1px solid #2e2e2e;
                 border-radius: 8px;
             }

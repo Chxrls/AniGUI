@@ -228,6 +228,11 @@ QListWidget::item:selected, QTableWidget::item:selected {
     color: #c084fc;
 }
 
+QListWidget QLabel {
+    background: transparent;
+    color: #e8e8e8;
+}
+
 QHeaderView::section {
     background-color: #242424;
     color: #e8e8e8;
@@ -248,6 +253,35 @@ QLineEdit#SearchInput {
 
 QLineEdit#SearchInput:focus {
     border-color: #c084fc;
+}
+
+/* Message Box Dialogs */
+QMessageBox {
+    background-color: #1a1a1a;
+}
+
+QMessageBox QLabel {
+    color: #e8e8e8;
+    font-size: 13px;
+}
+
+QMessageBox QPushButton {
+    background-color: #242424;
+    color: #e8e8e8;
+    border: 1px solid #2e2e2e;
+    border-radius: 4px;
+    padding: 6px 16px;
+    min-width: 60px;
+}
+
+QMessageBox QPushButton:hover {
+    border-color: #c084fc;
+    background-color: #2e2e2e;
+}
+
+QMessageBox QPushButton:pressed {
+    background-color: #c084fc;
+    color: #0f0f0f;
 }
 """
 

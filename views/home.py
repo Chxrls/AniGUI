@@ -1041,7 +1041,9 @@ class HomeView(QWidget):
         """Resolve the AllAnime streaming ID for this anime, then open
         the detail dialog with merged AniList + AllAnime data."""
         app_dict = _anilist_to_app_dict(anime_raw)
-        title = app_dict.get("name") or "Unknown"
+        # Prefer romaji title for AllAnime search (AllAnime indexes by romaji)
+        title_obj = anime_raw.get("title") or {}
+        search_title = title_obj.get("romaji") or title_obj.get("english") or app_dict.get("name") or "Unknown"
 
         # Show busy cursor while resolving
         QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
@@ -1050,7 +1052,7 @@ class HomeView(QWidget):
         if hasattr(self, '_resolve_worker') and self._resolve_worker and self._resolve_worker.isRunning():
             self._resolve_worker.quit()
 
-        self._resolve_worker = AllAnimeResolveWorker(title)
+        self._resolve_worker = AllAnimeResolveWorker(search_title)
 
         def on_resolved(allanime_match: dict):
             QApplication.restoreOverrideCursor()
