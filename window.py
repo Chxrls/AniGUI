@@ -14,6 +14,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("AniGUI")
         self.setMinimumSize(1100, 640)
         self.setObjectName("MainWindow")
+        self.showMaximized()
         
         # Central widget and layout
         central_widget = QWidget(self)
