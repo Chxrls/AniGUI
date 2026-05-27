@@ -2,8 +2,7 @@
 
 AniGUI is a native desktop client prototype for streaming anime.
 
-![landing page](repoAssets/AniGUI_landing_page.png)
-![select page](repoAssets/AniGUI_select_page.png)
+![landing page](repoAssets/AniGUI_LandingPage.png)
 
 ## How to Download/Use the Application
 1. Download and extract the .zip file found in the release: https://github.com/Chxrls/AniGUI/releases/tag/v1.0.1
