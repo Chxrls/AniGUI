@@ -147,6 +147,28 @@ QComboBox QAbstractItemView {
     selection-background-color: #242424;
 }
 
+/* Specific styling for the Format dropdown on the Home view */
+QComboBox#FormatCombo {
+    background-color: #1a1a1a;
+    color: #e8e8e8;
+    border: 1px solid #2e2e2e;
+    border-radius: 6px;
+    padding: 6px 10px;
+    min-width: 120px;
+}
+
+QComboBox#FormatCombo::drop-down {
+    subcontrol-origin: padding;
+    width: 28px;
+}
+
+QComboBox#FormatCombo QAbstractItemView {
+    background-color: #0f0f0f;
+    color: #e8e8e8;
+    border: 1px solid #2e2e2e;
+    selection-background-color: #242424;
+}
+
 QPushButton#BookmarkButton, QPushButton#DownloadButton {
     background-color: #242424;
     color: #e8e8e8;
