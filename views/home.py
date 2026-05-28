@@ -693,7 +693,7 @@ class ContinueWatchingRow(QWidget):
             if item.widget():
                 item.widget().deleteLater()
         
-        history = db.get_recent_watch_history(5)
+        history = db.get_recent_unique_watch_history(6)
         if not history:
             self.hide()
             return

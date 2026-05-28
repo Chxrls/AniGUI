@@ -228,6 +228,21 @@ class Database:
             )
             return [dict(row) for row in cur.fetchall()]
 
+    def get_recent_unique_watch_history(self, limit: int = 10) -> list[dict]:
+        with self._get_conn() as conn:
+            cur = conn.execute(
+                """
+                SELECT anime_id, anime_title, episode_str, translation_type,
+                       MAX(watched_at) AS watched_at
+                FROM watch_history
+                GROUP BY anime_id
+                ORDER BY MAX(watched_at) DESC
+                LIMIT ?
+                """,
+                (limit,)
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     # Bookmarks API
     def add_bookmark(self, anime_id: str, anime_title: str, thumbnail_url: str, sub_count: int, dub_count: int):
         with self._get_conn() as conn:

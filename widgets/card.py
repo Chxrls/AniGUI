@@ -5,6 +5,10 @@ from PyQt6.QtCore import pyqtSignal, Qt, QThreadPool
 from PyQt6.QtGui import QPixmap, QPainter, QColor
 from anigui.backend.worker import MetadataWorker, ThumbnailWorker
 
+def _truncate(text: str, max_len: int) -> str:
+    """Truncate text to max_len characters, appending '…' if trimmed."""
+    return text if len(text) <= max_len else text[:max_len - 1] + "…"
+
 class AnimeCard(QFrame):
     """Custom widget displaying an anime cover image, title, and metadata.
 
@@ -53,7 +57,7 @@ class AnimeCard(QFrame):
         self.layout.addWidget(self.image_label)
         
         # Title Label (plain text, max 2 lines)
-        self.title_label = QLabel(self.title, self)
+        self.title_label = QLabel(_truncate(self.title, 28), self)
         self.title_label.setWordWrap(True)
         self.title_label.setObjectName("CardTitle")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
