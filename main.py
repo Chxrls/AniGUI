@@ -145,6 +145,15 @@ QComboBox QAbstractItemView {
     color: #e8e8e8;
     border: 1px solid #2e2e2e;
     selection-background-color: #242424;
+    outline: none;
+}
+
+QComboBox QAbstractItemView QScrollBar:vertical {
+    min-width: 0px;
+    max-width: 0px;
+    width: 0px;
+    border: none;
+    background: transparent;
 }
 
 /* Specific styling for the Format dropdown on the Home view */
@@ -154,8 +163,6 @@ QComboBox#FormatCombo {
     border: 1px solid #2e2e2e;
     border-radius: 6px;
     padding: 6px 10px;
-    min-width: 93px;
-    max-width: 93px;
 }
 
 QComboBox#FormatCombo::drop-down {
@@ -187,7 +194,7 @@ QPushButton#BookmarkButton:hover, QPushButton#DownloadButton:hover {
 /* Custom Scrollbars */
 QScrollBar:vertical {
     border: none;
-    background: #1a1a1a;
+    background: transparent;
     width: 10px;
     margin: 0px;
 }
@@ -212,7 +219,7 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
 
 QScrollBar:horizontal {
     border: none;
-    background: #1a1a1a;
+    background: transparent;
     height: 10px;
     margin: 0px;
 }

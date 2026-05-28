@@ -127,6 +127,7 @@ class AnimeDetailWidget(QWidget):
         
         # Translation type Selector
         self.trans_selector = QComboBox(self)
+        self.trans_selector.view().setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.trans_selector.setObjectName("TranslationSelector")
         if self.sub_count > 0:
             self.trans_selector.addItem("Sub", "sub")

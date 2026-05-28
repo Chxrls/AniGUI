@@ -25,14 +25,14 @@ class SettingsView(QWidget):
         self.settings_layout.setSpacing(20)
         
         # Download Directory Setting
-        self.download_dir_layout = QVBoxLayout()
-        self.download_dir_label = QLabel("Download Directory", self.settings_container)
-        self.download_dir_label.setStyleSheet(apply_theme("font-weight: bold; color: #e8e8e8; font-size: 14px;"))
+        self.download_dir_layout = QHBoxLayout()
+        self.download_dir_label = QLabel("Download Directory:", self.settings_container)
+        self.download_dir_label.setStyleSheet(apply_theme("color: #e8e8e8; font-size: 13px;"))
         
-        self.download_dir_input_layout = QHBoxLayout()
         self.download_dir_input = QLineEdit(self.settings_container)
         self.download_dir_input.setObjectName("SearchInput") # Using existing styling
         self.download_dir_input.setReadOnly(True)
+        self.download_dir_input.setFixedWidth(400)
         
         # Load current setting
         current_dir = db.get_setting("download_path", "~/Downloads")
@@ -42,11 +42,10 @@ class SettingsView(QWidget):
         self.browse_btn.setObjectName("DownloadButton") # Using existing styling
         self.browse_btn.clicked.connect(self.browse_directory)
         
-        self.download_dir_input_layout.addWidget(self.download_dir_input)
-        self.download_dir_input_layout.addWidget(self.browse_btn)
-        
         self.download_dir_layout.addWidget(self.download_dir_label)
-        self.download_dir_layout.addLayout(self.download_dir_input_layout)
+        self.download_dir_layout.addWidget(self.download_dir_input)
+        self.download_dir_layout.addWidget(self.browse_btn)
+        self.download_dir_layout.addStretch()
         
         self.settings_layout.addLayout(self.download_dir_layout)
         
@@ -70,6 +69,7 @@ class SettingsView(QWidget):
         self.player_path_input = QLineEdit(self.settings_container)
         self.player_path_input.setObjectName("SearchInput")
         self.player_path_input.setReadOnly(True)
+        self.player_path_input.setFixedWidth(400)
         player_path_val = db.get_setting("player_path", "mpv")
         self.player_path_input.setText(player_path_val)
         
@@ -80,6 +80,7 @@ class SettingsView(QWidget):
         self.player_path_layout.addWidget(self.player_path_label)
         self.player_path_layout.addWidget(self.player_path_input)
         self.player_path_layout.addWidget(self.browse_player_btn)
+        self.player_path_layout.addStretch()
         self.settings_layout.addLayout(self.player_path_layout)
         
         # Cache Management
@@ -111,6 +112,7 @@ class SettingsView(QWidget):
         self.trans_label.setStyleSheet(apply_theme("color: #e8e8e8; font-size: 13px;"))
         
         self.trans_combo = QComboBox(self.settings_container)
+        self.trans_combo.view().setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.trans_combo.setStyleSheet(apply_theme("""
             QComboBox {
                 padding: 5px;
@@ -140,6 +142,7 @@ class SettingsView(QWidget):
         self.quality_label.setStyleSheet(apply_theme("color: #e8e8e8; font-size: 13px;"))
         
         self.quality_combo = QComboBox(self.settings_container)
+        self.quality_combo.view().setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.quality_combo.setStyleSheet(apply_theme("""
             QComboBox {
                 padding: 5px;
@@ -172,6 +175,7 @@ class SettingsView(QWidget):
         self.theme_label.setStyleSheet(apply_theme("color: #e8e8e8; font-size: 13px;"))
         
         self.theme_combo = QComboBox(self.settings_container)
+        self.theme_combo.view().setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.theme_combo.setStyleSheet(apply_theme("""
             QComboBox {
                 padding: 5px;

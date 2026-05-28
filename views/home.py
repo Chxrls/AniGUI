@@ -729,8 +729,11 @@ class PillRow(QWidget):
             btn.setCheckable(True)
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn.setFixedHeight(28)
-            btn.setFixedWidth(115)
-            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            btn.setMinimumWidth(60)
+            if cols > 0:
+                btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            else:
+                btn.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
             btn.clicked.connect(lambda checked, l=label: self._clicked(l))
             self._style_btn(btn, False)
             if cols > 0:
@@ -742,7 +745,8 @@ class PillRow(QWidget):
         if cols <= 0:
             layout.addStretch()
         else:
-            layout.setColumnStretch(cols, 1)
+            for c in range(cols):
+                layout.setColumnStretch(c, 1)
 
     def _style_btn(self, btn: QPushButton, active: bool):
         if active:
@@ -982,6 +986,7 @@ class HomeView(QWidget):
         self._format_layout.setContentsMargins(0, 0, 0, 0)
         # Instantiate the ComboBox
         self._format_combo = QComboBox()
+        self._format_combo.view().setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._format_combo.setObjectName("FormatCombo")
         self._format_combo.addItems(FORMATS)
         self._format_combo.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -1176,3 +1181,26 @@ class HomeView(QWidget):
             self._card_grid.show_status("No results found.")
             return
         self._card_grid.populate(media_list)
+
+    # ------------------------------------------------------------------
+    # Dynamic layout — keep dropdown aligned with genre column on resize
+    # ------------------------------------------------------------------
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_dropdown_width()
+
+    def _sync_dropdown_width(self):
+        """Dynamically match the dropdown width to the first genre column
+        so the control bar stays aligned with the genre grid below."""
+        btns = list(self._genre_pills._btns.values())
+        if not btns or btns[0].width() <= 0:
+            return
+        target_total = btns[0].width()
+        # QSS width = content area; subtract padding (10+10) and border (1+1)
+        css_w = max(30, target_total - 22)
+        if getattr(self, '_last_combo_css_w', None) != css_w:
+            self._last_combo_css_w = css_w
+            self._format_combo.setStyleSheet(
+                f"min-width: {css_w}px; max-width: {css_w}px;"
+            )
