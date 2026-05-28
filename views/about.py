@@ -154,7 +154,7 @@ class AboutView(QWidget):
         # GitHub link
         gh_layout = QHBoxLayout()
         gh_layout.setContentsMargins(10, 8, 0, 0)
-        gh_icon = QLabel("GitHub:", dev_card)
+        gh_icon = QLabel("Star on Github:", dev_card)
         gh_icon.setStyleSheet(apply_theme("color: #e8e8e8; font-size: 13px; border: none;"))
         gh_link = QLabel(
             '<a href="https://github.com/Chxrls/AniGUI" '

@@ -154,7 +154,8 @@ QComboBox#FormatCombo {
     border: 1px solid #2e2e2e;
     border-radius: 6px;
     padding: 6px 10px;
-    min-width: 120px;
+    min-width: 93px;
+    max-width: 93px;
 }
 
 QComboBox#FormatCombo::drop-down {

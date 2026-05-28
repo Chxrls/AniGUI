@@ -972,12 +972,14 @@ class HomeView(QWidget):
 
         # --- Unified Control Bar (Dropdown + Tabs) ---
         self._control_bar = QHBoxLayout()
-        self._control_bar.setSpacing(16)
+        self._control_bar.setContentsMargins(0, 0, 0, 0)
+        self._control_bar.setSpacing(6)
         self._control_bar.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
 
         # --- Row 1: Media format dropdown ---
         # Added a horizontal layout so the dropdown menu does not stretch to the whole screen
         self._format_layout = QHBoxLayout()
+        self._format_layout.setContentsMargins(0, 0, 0, 0)
         # Instantiate the ComboBox
         self._format_combo = QComboBox()
         self._format_combo.setObjectName("FormatCombo")
