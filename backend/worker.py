@@ -5,7 +5,7 @@ import requests
 import psutil
 import re
 from PyQt6.QtCore import QRunnable, QObject, pyqtSignal, QThreadPool
-from anigui.backend.api import search_anime, get_anilist_metadata, resolve_stream_url
+from anigui.backend.api import search_anime, get_anilist_metadata, resolve_stream_url, fetch_top_ranked
 
 def parse_time(time_str: str) -> float:
     try:
@@ -94,6 +94,28 @@ class SearchWorker(QRunnable):
     def run(self):
         try:
             results = search_anime(self.query)
+            self.signals.finished.emit(results)
+        except Exception as e:
+            self.signals.error.emit(str(e))
+
+class DefaultResultsWorker(QRunnable):
+    """Worker to fetch the top 40 ranked anime from AniList.
+ 
+    Used by SearchView to populate the grid before the user has typed
+    anything.  Results are AniList media dicts (not AllAnime dicts) so
+    SearchView must handle them differently from SearchWorker results —
+    they contain rich metadata (cover URL, genres, score) but no AllAnime
+    streaming ID.  The ID is resolved lazily at click time via
+    AllAnimeResolveWorker (same pattern as HomeView).
+    """
+    def __init__(self, per_page: int = 40):
+        super().__init__()
+        self.per_page = per_page
+        self.signals = WorkerSignals()
+
+    def run(self):
+        try:
+            results = fetch_top_ranked(per_page=self.per_page)
             self.signals.finished.emit(results)
         except Exception as e:
             self.signals.error.emit(str(e))

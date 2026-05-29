@@ -38,7 +38,7 @@ ANILIST_API_URL = "https://graphql.anilist.co"
 
 ANILIST_SEARCH_QUERY = """
 query ($search: String) {
-  Page(page: 1, perPage: 1) {
+  Page(page: 1, perPage: 5) {
     media(search: $search, type: ANIME) {
       id
       title {
@@ -60,10 +60,32 @@ query ($search: String) {
 }
 """
 
+ANILIST_TOP_RANKED_QUERY = """
+query ($page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    media(sort: SCORE_DESC, type: ANIME, averageScore_greater: 70) {
+      id
+      title { romaji english }
+      coverImage { large extraLarge }
+      description(asHtml: false)
+      averageScore
+      format
+      status
+      episodes
+      genres
+    }
+  }
+}
+"""
+
 def get_anilist_metadata(title: str) -> Optional[dict]:
     """Retrieve detailed metadata for an anime from AniList GraphQL API.
-
-    Uses title as query. Caches GraphQL responses in SQLite database.
+ 
+    Fetches up to 5 candidates from AniList and uses local fuzzy matching
+    (best_anilist_match) to pick the most accurate result rather than
+    blindly returning the first one.
+ 
+    Results are cached in SQLite for 24 hours keyed by the query title.
     """
     if not title:
         return None
@@ -103,3 +125,48 @@ def get_anilist_metadata(title: str) -> Optional[dict]:
         pass
 
     return None
+
+def fetch_top_ranked(page: int = 1, per_page: int = 40) -> list[dict]:
+    """Return the top *per_page* all-time ranked anime from AniList.
+ 
+    Results are sorted by SCORE_DESC and filtered to averageScore > 70.
+    Responses are cached in SQLite for 1 hour (3600 s) so repeated
+    navigation to the Search tab is instant after the first load.
+ 
+    Each item in the returned list is a raw AniList media dict containing:
+        id, title, coverImage, description, averageScore, format,
+        status, episodes, genres, nextAiringEpisode
+    """
+    cache_key = f"top_ranked:p{page}:n{per_page}"
+ 
+    # Check cache
+    cached = db.get_cached(cache_key)
+    if cached:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+ 
+    # Fetch from AniList
+    resp = requests.post(
+        ANILIST_API_URL,
+        json={
+            "query": ANILIST_TOP_RANKED_QUERY,
+            "variables": {"page": page, "perPage": per_page},
+        },
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+ 
+    media_list = (
+        data.get("data", {})
+            .get("Page", {})
+            .get("media", [])
+    )
+ 
+    # Cache for 1 hour — rankings don't change minute-to-minute
+    db.set_cached(cache_key, json.dumps(media_list), ttl_seconds=3600)
+ 
+    return media_list
