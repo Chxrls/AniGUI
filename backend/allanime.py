@@ -29,6 +29,25 @@ AES_KEY = hashlib.sha256(AES_KEY_PHRASE.encode()).digest()
 def check_mpv_installed() -> bool:
     return get_mpv_path() is not None
 
+def _clean_request_error(exc: requests.RequestException) -> str:
+    """Extract a clean, user-friendly error message from a requests exception.
+
+    requests.HTTPError includes the full URL in its string representation,
+    which can be hundreds of characters long (especially with URL-encoded
+    GraphQL extensions containing SHA-256 hashes).  This helper strips the
+    URL and returns just the status code + reason.
+    """
+    if hasattr(exc, "response") and exc.response is not None:
+        status = exc.response.status_code
+        reason = exc.response.reason or "Unknown error"
+        return f"{status} {reason}"
+    # Timeout, ConnectionError, etc. — stringify but cap length
+    msg = str(exc)
+    # Strip any URL from the message (everything after "for url: ...")
+    if " for url: " in msg:
+        msg = msg.split(" for url: ")[0]
+    return msg[:120] if len(msg) > 120 else msg
+
 def gql_post(query: str, variables: dict | None = None) -> dict:
     payload = {"query": query}
     if variables:
@@ -40,7 +59,9 @@ def gql_post(query: str, variables: dict | None = None) -> dict:
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException as e:
-        raise RuntimeError(f"GraphQL POST failed: {e}") from e
+        # Extract clean error without raw URL (which contains long hashes)
+        reason = _clean_request_error(e)
+        raise RuntimeError(f"API request failed: {reason}") from e
 
     if "errors" in data:
         msgs = [err.get("message", "unknown") for err in data["errors"]]
@@ -59,7 +80,9 @@ def gql_get_persisted(query_hash: str, variables: dict) -> dict:
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException as e:
-        raise RuntimeError(f"GraphQL GET failed: {e}") from e
+        # Extract clean error without raw URL (which contains long hashes)
+        reason = _clean_request_error(e)
+        raise RuntimeError(f"API request failed: {reason}") from e
     return data
 
 SEARCH_GQL = """

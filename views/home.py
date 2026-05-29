@@ -415,21 +415,50 @@ class ImageWorker(QThread):
 
 class AllAnimeResolveWorker(QThread):
     """Searches AllAnime by title to resolve the correct streaming ID,
-    episode lists, and sub/dub counts.  Emits the first matching
-    AllAnime result dict on success, or an error string on failure."""
+    episode lists, and sub/dub counts.
+
+    Uses fuzzy matching with episode-count tiebreaker and fallback
+    English-title search to handle franchise titles correctly.
+    """
     finished = pyqtSignal(dict)
     error    = pyqtSignal(str)
 
-    def __init__(self, title: str):
+    def __init__(self, title: str, alt_title: str = "",
+                 expected_episodes: int = 0):
         super().__init__()
         self.title = title
+        self.alt_title = alt_title
+        self.expected_episodes = expected_episodes
 
     def run(self):
         try:
             from anigui.backend.api import search_anime
-            results = search_anime(self.title)
-            if results:
-                self.finished.emit(results[0])
+            from anigui.utils.matching import best_allanime_match, clean_search_query
+
+            alt_titles = [self.alt_title] if self.alt_title else []
+
+            # First attempt — search with primary title (cleaned)
+            clean_title = clean_search_query(self.title)
+            results = search_anime(clean_title)
+            match = best_allanime_match(
+                self.title, results,
+                expected_episodes=self.expected_episodes,
+                alt_titles=alt_titles,
+            )
+
+            # Fallback — retry with English title if primary search failed
+            if not match and self.alt_title:
+                clean_alt = clean_search_query(self.alt_title)
+                if clean_alt.lower() != clean_title.lower():
+                    results2 = search_anime(clean_alt)
+                    match = best_allanime_match(
+                        self.alt_title, results2,
+                        expected_episodes=self.expected_episodes,
+                        alt_titles=[self.title],
+                    )
+
+            if match:
+                self.finished.emit(match)
             else:
                 self.error.emit(f"No AllAnime match found for '{self.title}'.")
         except Exception as e:
@@ -1081,7 +1110,11 @@ class HomeView(QWidget):
 
         # Prefer romaji title for AllAnime search (AllAnime indexes by romaji)
         title_obj = anime_raw.get("title") or {}
-        search_title = title_obj.get("romaji") or title_obj.get("english") or app_dict.get("name") or "Unknown"
+        romaji = title_obj.get("romaji") or ""
+        english = title_obj.get("english") or ""
+        search_title = romaji or english or app_dict.get("name") or "Unknown"
+        alt_title = english if (english and english.lower() != search_title.lower()) else ""
+        expected_eps = app_dict.get("sub_count", 0) or anime_raw.get("episodes", 0) or 0
 
         # Show busy cursor while resolving
         QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
@@ -1090,7 +1123,9 @@ class HomeView(QWidget):
         if hasattr(self, '_resolve_worker') and self._resolve_worker and self._resolve_worker.isRunning():
             self._resolve_worker.quit()
 
-        self._resolve_worker = AllAnimeResolveWorker(search_title)
+        self._resolve_worker = AllAnimeResolveWorker(
+            search_title, alt_title=alt_title, expected_episodes=expected_eps
+        )
 
         def on_resolved(allanime_match: dict):
             QApplication.restoreOverrideCursor()

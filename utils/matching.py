@@ -44,12 +44,36 @@ def title_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
 
-def best_allanime_match(query: str, results: list[dict]) -> dict | None:
+def clean_search_query(query: str) -> str:
+    """Strip special characters that break AllAnime's search API.
+
+    AllAnime's search engine returns 0 results when the query contains
+    apostrophes, curly quotes, or other punctuation that isn't part of the
+    actual title text (e.g. AniList uses "Gintama'" for Season 2).
+
+    This function removes those characters to produce a safer search query
+    while preserving semicolons (needed for titles like "Steins;Gate").
+    """
+    import re
+    # Remove apostrophes, curly quotes, and other problematic punctuation
+    cleaned = re.sub(r"[''`\"°]", "", query)
+    # Collapse multiple spaces
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def best_allanime_match(
+    query: str,
+    results: list[dict],
+    expected_episodes: int = 0,
+    alt_titles: list[str] | None = None,
+) -> dict | None:
     """Pick the best AllAnime result for *query* using local fuzzy matching.
 
     Each AllAnime result dict is expected to have at least:
         "name"         — romaji / primary title
         "english_name" — English title (may be the same as name)
+        "sub_count"    — number of sub episodes (used for tiebreaker)
 
     Returns the highest-scoring result if its score meets MATCH_THRESHOLD,
     otherwise returns None to signal no confident match was found.
@@ -57,13 +81,22 @@ def best_allanime_match(query: str, results: list[dict]) -> dict | None:
     Parameters
     ----------
     query:
-        The title string used to search AllAnime (e.g. the AniList romaji
-        title when resolving a streaming ID for a default-grid card).
+        The primary title string used to search AllAnime.
     results:
         Raw list of dicts returned by allanime.search_anime().
+    expected_episodes:
+        If > 0, episode count from AniList metadata.  Used as a tiebreaker
+        when multiple results have similar title scores.
+    alt_titles:
+        Additional title variants to score against (e.g. the English title
+        when *query* is the romaji title).  Each non-empty variant is scored
+        independently and the best score across all variants wins.
     """
     if not results:
         return None
+
+    # Build the full list of query variants to score against
+    queries = [query] + [t for t in (alt_titles or []) if t]
 
     scored: list[tuple[float, dict]] = []
 
@@ -72,12 +105,26 @@ def best_allanime_match(query: str, results: list[dict]) -> dict | None:
             r.get("name") or "",
             r.get("english_name") or "",
         ]
-        # Score against every non-empty title variant, keep the best
-        best_score = max(
-            (title_similarity(query, c) for c in candidates if c),
-            default=0.0,
-        )
-        scored.append((best_score, r))
+
+        # Score against every (query-variant × result-title) pair
+        best_title_score = 0.0
+        for q in queries:
+            for c in candidates:
+                if not c:
+                    continue
+                sim = title_similarity(q, c)
+                best_title_score = max(best_title_score, sim)
+
+        # Episode-count tiebreaker bonus
+        ep_bonus = 0.0
+        if expected_episodes > 0:
+            result_eps = r.get("sub_count", 0)
+            if result_eps > 0 and result_eps == expected_episodes:
+                ep_bonus = 0.1        # strong bonus for exact match
+            elif result_eps > 0 and abs(result_eps - expected_episodes) <= 2:
+                ep_bonus = 0.05       # small bonus for close match
+
+        scored.append((best_title_score + ep_bonus, r))
 
     scored.sort(key=lambda x: x[0], reverse=True)
     top_score, top_result = scored[0]

@@ -280,7 +280,12 @@ class AnimeDetailWidget(QWidget):
             self._on_stream_failed(str(e))
 
     def _on_stream_failed(self, err_msg: str):
-        self.status_label.setText(f"Error: {err_msg}")
+        # Truncate long error messages to keep the status label readable;
+        # raw API errors can include URLs with long hashes.
+        clean = err_msg.split("\n")[0]  # Take first line only
+        if len(clean) > 80:
+            clean = clean[:77] + "…"
+        self.status_label.setText(f"Error: {clean}")
         self.status_label.setStyleSheet(apply_theme("color: #f87171;"))  # Error red
 
     def queue_download(self):
