@@ -96,7 +96,7 @@ class AnimeCard(QFrame):
         if not meta:
             self._on_metadata_failed("No metadata found")
             return
-            
+
         # Store metadata details
         self.synopsis = meta.get("description") or ""
         self.genres = meta.get("genres") or []
