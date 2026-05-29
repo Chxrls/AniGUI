@@ -86,6 +86,18 @@ class AnimeCard(QFrame):
             self.set_image_from_path(saved_thumb)
             return
 
+        # If the card was created with pre-populated metadata (e.g. from the
+        # default search grid or home view), use it directly — skip the
+        # redundant AniList MetadataWorker call and just fetch the thumbnail.
+        if saved_thumb and self.anime_data.get("synopsis"):
+            self.synopsis = self.anime_data.get("synopsis") or ""
+            self.genres = self.anime_data.get("genres") or []
+            self.score = self.anime_data.get("score") or 0
+            thumb_worker = ThumbnailWorker(saved_thumb)
+            thumb_worker.signals.finished.connect(self.set_image_from_path)
+            QThreadPool.globalInstance().start(thumb_worker)
+            return
+
         # Fetch AniList metadata
         worker = MetadataWorker(self.title)
         worker.signals.finished.connect(self._on_metadata_loaded)

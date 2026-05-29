@@ -116,7 +116,12 @@ def get_anilist_metadata(title: str) -> Optional[dict]:
         
         media_list = data.get("data", {}).get("Page", {}).get("media", [])
         if media_list:
-            metadata = media_list[0]
+            # Use fuzzy matching to pick the best result from candidates
+            from anigui.utils.matching import best_anilist_match
+            metadata = best_anilist_match(title, media_list)
+            if metadata is None:
+                # Fallback to first result if no confident match
+                metadata = media_list[0]
             # Save in cache for 24 hours (86400 seconds)
             db.set_cached(cache_key, json.dumps(metadata), ttl_seconds=86400)
             return metadata

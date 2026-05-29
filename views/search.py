@@ -23,7 +23,7 @@ from anigui.backend.worker import SearchWorker, DefaultResultsWorker
 from anigui.backend.allanime import search_anime as _allanime_search
 from anigui.widgets.card import AnimeCard
 from anigui.utils.theme import apply_theme
-from anigui.utils.matching import best_anilist_match
+from anigui.utils.matching import best_allanime_match
 
 class _AllAnimeResolveWorker(QThread):
     """Searches AllAnime by title and returns the best-matching result dict."""
@@ -37,7 +37,7 @@ class _AllAnimeResolveWorker(QThread):
     def run(self):
         try:
             results = _allanime_search(self.title)
-            match = best_anilist_match(self.title, results)
+            match = best_allanime_match(self.title, results)
             self.finished.emit(match if match else {})
         except Exception as e:
             self.error.emit(str(e))
