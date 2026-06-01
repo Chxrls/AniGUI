@@ -17,6 +17,9 @@ from anigui.backend.allanime import (
 # Import local db cache
 from anigui.backend.db import db
 
+# Import matching utilities
+from anigui.utils.matching import best_anilist_match
+
 # Re-export AllAnime backend APIs
 def search_anime(query: str) -> list[dict]:
     return _allanime_search(query)
@@ -35,6 +38,27 @@ def check_mpv_installed() -> bool:
 
 # AniList GraphQL configuration
 ANILIST_API_URL = "https://graphql.anilist.co"
+
+_MEDIA_FIELDS = """
+  id
+  title {
+    romaji
+    english
+  }
+  coverImage {
+    large
+    extraLarge
+  }
+  description(asHtml: false)
+  averageScore
+  format
+  status
+  genres
+  nextAiringEpisode {
+    episode
+    airingAt
+  }
+"""
 
 ANILIST_SEARCH_QUERY = """
 query ($search: String) {
@@ -175,4 +199,97 @@ def fetch_top_ranked(page: int = 1, per_page: int = 40) -> list[dict]:
     # Cache for 1 hour — rankings don't change minute-to-minute
     db.set_cached(cache_key, json.dumps(media_list), ttl_seconds=3600)
  
+    return media_list
+
+def search_anilist(
+    query:    str | None        = None,
+    genres:   list[str] | None  = None,
+    season:   str | None        = None,   # WINTER / SPRING / SUMMER / FALL
+    year:     int | None        = None,
+    format:   str | None        = None,   # TV / MOVIE / OVA / ONA / SPECIAL
+    status:   str | None        = None,   # RELEASING / FINISHED / NOT_YET_RELEASED
+    page:     int               = 1,
+    per_page: int               = 40,
+) -> list[dict]:
+    """Filtered AniList search — all parameters are optional.
+ 
+    Builds the GraphQL query dynamically, only including arguments that
+    are actually set. Results are cached in SQLite for 15 minutes keyed
+    by the full combination of filter values.
+ 
+    Returns a list of AniList media dicts (same shape as fetch_top_ranked).
+    """
+    # Build a stable cache key from all filter params
+    cache_key = (
+        f"anilist_search:"
+        f"q={query or ''}:"
+        f"g={','.join(sorted(genres or []))}:"
+        f"s={season or ''}:"
+        f"y={year or ''}:"
+        f"f={format or ''}:"
+        f"st={status or ''}:"
+        f"p={page}:n={per_page}"
+    )
+ 
+    cached = db.get_cached(cache_key)
+    if cached:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+ 
+    # --- Build filter argument string dynamically ---
+    filters: list[str] = ["type: ANIME"]
+ 
+    if query:
+        filters.append(f'search: "{query}"')
+ 
+    if genres:
+        inner = ", ".join(f'"{g}"' for g in genres)
+        filters.append(f"genre_in: [{inner}]")
+ 
+    if season:
+        filters.append(f"season: {season}")
+ 
+    if year:
+        filters.append(f"seasonYear: {year}")
+ 
+    if format:
+        filters.append(f"format: {format}")
+ 
+    if status:
+        filters.append(f"status: {status}")
+ 
+    # Default sort: by score when no text query, by search relevance when query given
+    sort = "SEARCH_MATCH" if query else "SCORE_DESC"
+    filters.append(f"sort: {sort}")
+ 
+    filter_str = ", ".join(filters)
+ 
+    gql_query = f"""
+    query ($page: Int, $perPage: Int) {{
+      Page(page: $page, perPage: $perPage) {{
+        media({filter_str}) {{
+          {_MEDIA_FIELDS}
+        }}
+      }}
+    }}
+    """
+ 
+    resp = requests.post(
+        ANILIST_API_URL,
+        json={"query": gql_query, "variables": {"page": page, "perPage": per_page}},
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    media_list = (
+        resp.json()
+            .get("data", {})
+            .get("Page", {})
+            .get("media", [])
+    )
+ 
+    # Cache filtered results for 15 minutes
+    db.set_cached(cache_key, json.dumps(media_list), ttl_seconds=900)
     return media_list

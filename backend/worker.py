@@ -5,7 +5,7 @@ import requests
 import psutil
 import re
 from PyQt6.QtCore import QRunnable, QObject, pyqtSignal, QThreadPool
-from anigui.backend.api import search_anime, get_anilist_metadata, resolve_stream_url, fetch_top_ranked
+from anigui.backend.api import search_anime, get_anilist_metadata, resolve_stream_url, fetch_top_ranked, search_anilist
 
 def parse_time(time_str: str) -> float:
     try:
@@ -97,6 +97,56 @@ class SearchWorker(QRunnable):
             self.signals.finished.emit(results)
         except Exception as e:
             self.signals.error.emit(str(e))
+
+class FilteredSearchWorker(QRunnable):
+    """Worker to perform a filtered AniList search.
+ 
+    Used by SearchView when any filter (genre, season, year, format,
+    status) is active, with or without a text query.  Results are AniList
+    media dicts — rich metadata included, no AllAnime streaming ID.
+    The ID is resolved lazily at click time via AllAnimeResolveWorker.
+ 
+    Parameters
+    ----------
+    query    : optional text search string
+    genres   : list of AniList genre strings  e.g. ["Action", "Fantasy"]
+    season   : AniList season enum            e.g. "WINTER"
+    year     : season year integer            e.g. 2024
+    fmt      : AniList format enum            e.g. "TV"
+    status   : AniList status enum            e.g. "RELEASING"
+    """
+    def __init__(
+        self,
+        query:   str | None       = None,
+        genres:  list[str] | None = None,
+        season:  str | None       = None,
+        year:    int | None       = None,
+        fmt:     str | None       = None,
+        status:  str | None       = None,
+    ):
+        super().__init__()
+        self.query  = query
+        self.genres = genres
+        self.season = season
+        self.year   = year
+        self.fmt    = fmt
+        self.status = status
+        self.signals = WorkerSignals()
+ 
+    def run(self):
+        try:
+            results = search_anilist(
+                query=self.query,
+                genres=self.genres,
+                season=self.season,
+                year=self.year,
+                format=self.fmt,
+                status=self.status,
+            )
+            self.signals.finished.emit(results)
+        except Exception as e:
+            self.signals.error.emit(str(e))
+
 
 class DefaultResultsWorker(QRunnable):
     """Worker to fetch the top 40 ranked anime from AniList.

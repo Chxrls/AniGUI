@@ -208,7 +208,7 @@ def _format_gql(anime_format: str | None) -> str:
 
 
 def fetch_trending(genres: list[str] | None = None, anime_format: str | None = None,
-                   page: int = 1, per_page: int = 20) -> list[dict]:
+                   page: int = 1, per_page: int = 40) -> list[dict]:
     genre_filter = _genre_gql_list(genres)
     format_filter = _format_gql(anime_format)
     q = f"""
@@ -225,7 +225,7 @@ def fetch_trending(genres: list[str] | None = None, anime_format: str | None = N
 
 
 def fetch_popular(genres: list[str] | None = None, anime_format: str | None = None,
-                  page: int = 1, per_page: int = 20) -> list[dict]:
+                  page: int = 1, per_page: int = 40) -> list[dict]:
     genre_filter = _genre_gql_list(genres)
     format_filter = _format_gql(anime_format)
     q = f"""
@@ -242,7 +242,7 @@ def fetch_popular(genres: list[str] | None = None, anime_format: str | None = No
 
 
 def fetch_top_rated(genres: list[str] | None = None, anime_format: str | None = None,
-                    page: int = 1, per_page: int = 20) -> list[dict]:
+                    page: int = 1, per_page: int = 40) -> list[dict]:
     genre_filter = _genre_gql_list(genres)
     format_filter = _format_gql(anime_format)
     q = f"""
@@ -259,7 +259,7 @@ def fetch_top_rated(genres: list[str] | None = None, anime_format: str | None = 
 
 
 def fetch_airing(anime_format: str | None = None,
-                 page: int = 1, per_page: int = 20) -> list[dict]:
+                 page: int = 1, per_page: int = 40) -> list[dict]:
     format_filter = _format_gql(anime_format)
     q = f"""
     query($page: Int, $perPage: Int) {{
@@ -275,7 +275,7 @@ def fetch_airing(anime_format: str | None = None,
 
 
 def fetch_upcoming(anime_format: str | None = None,
-                   page: int = 1, per_page: int = 20) -> list[dict]:
+                   page: int = 1, per_page: int = 40) -> list[dict]:
     format_filter = _format_gql(anime_format)
     q = f"""
     query($page: Int, $perPage: Int) {{
