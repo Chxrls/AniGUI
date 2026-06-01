@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 import requests
 
-APP_VERSION = "1.2.2-alpha"
+APP_VERSION = "1.2.3-alpha"
 
 SECTION_CARD_STYLE = """
     QFrame#AboutSection {
@@ -129,7 +129,7 @@ class AboutView(QWidget):
         dev_card, dev_layout = self._make_section_card("Developers")
 
         devs = [
-            ("Charls", "Lead Developer"),
+            ("Charls", "Developer"),
             ("Harvey", "Developer"),
             ("Jin", "Developer"),
         ]
