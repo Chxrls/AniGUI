@@ -55,6 +55,29 @@ class AnimeCard(QFrame):
         self.image_label.setStyleSheet(apply_theme("background-color: #242424; color: #888888;"))
         self.image_label.setText("Loading...")
         self.layout.addWidget(self.image_label)
+
+        # Status badge — overlay on the cover image
+        status_raw = self.anime_data.get("status") or ""
+        STATUS_DISPLAY = {
+            "RELEASING": ("Airing", "#16a34a", "#dcfce7"),
+            "FINISHED": ("Finished", "#64748b", "#e2e8f0"),
+            "NOT_YET_RELEASED": ("Upcoming", "#d97706", "#fef3c7"),
+            "CANCELLED": ("Cancelled", "#dc2626", "#fee2e2"),
+            "HIATUS": ("Hiatus", "#9333ea", "#f3e8ff"),
+        }
+        self.status_badge = None
+        if status_raw in STATUS_DISPLAY:
+            display_text, bg_color, text_color = STATUS_DISPLAY[status_raw]
+            self.status_badge = QLabel(display_text, self.image_label)
+            self.status_badge.setObjectName("CardStatusBadge")
+            self.status_badge.setStyleSheet(
+                f"QLabel#CardStatusBadge {{ background-color: {bg_color}; color: {text_color}; "
+                f"font-size: 9px; font-weight: bold; padding: 2px 6px; "
+                f"border-radius: 3px; }}"
+            )
+            self.status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.status_badge.adjustSize()
+            self.status_badge.move(4, 4)
         
         # Title Label (plain text, max 2 lines)
         self.title_label = QLabel(_truncate(self.title, 28), self)
@@ -84,6 +107,8 @@ class AnimeCard(QFrame):
         if saved_thumb and not saved_thumb.startswith("http"):
             # It's already a local file path
             self.set_image_from_path(saved_thumb)
+            # Still need to fetch AniList metadata for the status badge
+            self._ensure_status_fetched()
             return
 
         # If the card was created with pre-populated metadata (e.g. from the
@@ -96,6 +121,8 @@ class AnimeCard(QFrame):
             thumb_worker = ThumbnailWorker(saved_thumb)
             thumb_worker.signals.finished.connect(self.set_image_from_path)
             QThreadPool.globalInstance().start(thumb_worker)
+            # Still need to fetch AniList metadata for the status badge
+            self._ensure_status_fetched()
             return
 
         # Fetch AniList metadata
@@ -103,6 +130,13 @@ class AnimeCard(QFrame):
         worker.signals.finished.connect(self._on_metadata_loaded)
         worker.signals.error.connect(self._on_metadata_failed)
         QThreadPool.globalInstance().start(worker)
+
+    def _ensure_status_fetched(self):
+        """Fetch AniList metadata if status is missing (e.g. bookmark cards)."""
+        if not self.anime_data.get("status") and self.title:
+            worker = MetadataWorker(self.title)
+            worker.signals.finished.connect(self._on_metadata_loaded)
+            QThreadPool.globalInstance().start(worker)
 
     def _on_metadata_loaded(self, meta: dict):
         if not meta:
@@ -120,6 +154,32 @@ class AnimeCard(QFrame):
         self.anime_data["genres"] = self.genres
         self.anime_data["score"] = self.score
         self.anime_data["banner_url"] = self.banner_url
+
+        # Create status badge if we didn't have status at creation time
+        status_raw = meta.get("status") or ""
+        if status_raw:
+            self.anime_data["status"] = status_raw
+        if status_raw and self.status_badge is None:
+            STATUS_DISPLAY = {
+                "RELEASING": ("Airing", "#16a34a", "#dcfce7"),
+                "FINISHED": ("Finished", "#64748b", "#e2e8f0"),
+                "NOT_YET_RELEASED": ("Upcoming", "#d97706", "#fef3c7"),
+                "CANCELLED": ("Cancelled", "#dc2626", "#fee2e2"),
+                "HIATUS": ("Hiatus", "#9333ea", "#f3e8ff"),
+            }
+            if status_raw in STATUS_DISPLAY:
+                display_text, bg_color, text_color = STATUS_DISPLAY[status_raw]
+                self.status_badge = QLabel(display_text, self.image_label)
+                self.status_badge.setObjectName("CardStatusBadge")
+                self.status_badge.setStyleSheet(
+                    f"QLabel#CardStatusBadge {{ background-color: {bg_color}; color: {text_color}; "
+                    f"font-size: 9px; font-weight: bold; padding: 2px 6px; "
+                    f"border-radius: 3px; }}"
+                )
+                self.status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.status_badge.adjustSize()
+                self.status_badge.move(4, 4)
+                self.status_badge.show()
         
         # If english title is available and different, save it
         eng_title = meta.get("title", {}).get("english")

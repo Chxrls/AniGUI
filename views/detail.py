@@ -105,6 +105,35 @@ class AnimeDetailWidget(QWidget):
         self.genres_label.setObjectName("DetailGenres")
         self.genres_label.setWordWrap(True)
         info_layout.addWidget(self.genres_label)
+
+        # Airing status badge
+        status_raw = self.anime_data.get("status") or ""
+        STATUS_DISPLAY = {
+            "RELEASING": ("Airing", "#16a34a", "#dcfce7"),
+            "FINISHED": ("Finished", "#64748b", "#e2e8f0"),
+            "NOT_YET_RELEASED": ("Upcoming", "#d97706", "#fef3c7"),
+            "CANCELLED": ("Cancelled", "#dc2626", "#fee2e2"),
+            "HIATUS": ("Hiatus", "#9333ea", "#f3e8ff"),
+        }
+        self.airing_status_label = QLabel("", self)
+        self.airing_status_label.setObjectName("DetailAiringStatus")
+        if status_raw in STATUS_DISPLAY:
+            display_text, bg_color, text_color = STATUS_DISPLAY[status_raw]
+            self.airing_status_label.setText(display_text)
+            self.airing_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.airing_status_label.setStyleSheet(
+                f"QLabel#DetailAiringStatus {{ background-color: {bg_color}; color: {text_color}; "
+                f"font-size: 11px; font-weight: bold; padding: 4px 14px; "
+                f"border-radius: 4px; }}"
+            )
+            self.airing_status_label.setSizePolicy(
+                self.airing_status_label.sizePolicy().horizontalPolicy(),
+                self.airing_status_label.sizePolicy().verticalPolicy()
+            )
+            self.airing_status_label.setMaximumWidth(120)
+        else:
+            self.airing_status_label.hide()
+        info_layout.addWidget(self.airing_status_label, alignment=Qt.AlignmentFlag.AlignLeft)
         
         # Synopsis (Full text scrollable / wrapped)
         self.synopsis_label = QLabel(self.synopsis, self)
@@ -192,8 +221,57 @@ class AnimeDetailWidget(QWidget):
         # Load initial episode list
         self.load_episodes()
 
+        # If status is not available, fetch it asynchronously from AniList
+        if not status_raw and self.title:
+            self._fetch_status_async()
+
     def get_current_translation(self) -> str:
         return self.trans_selector.currentData() or "sub"
+
+    def _fetch_status_async(self):
+        """Fetch AniList metadata to get the airing status when not available."""
+        from anigui.backend.worker import MetadataWorker
+        worker = MetadataWorker(self.title)
+        worker.signals.finished.connect(self._on_status_fetched)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_status_fetched(self, meta: dict):
+        """Update the airing status badge when metadata arrives."""
+        if not meta:
+            return
+        status_raw = meta.get("status") or ""
+        if not status_raw:
+            return
+
+        STATUS_DISPLAY = {
+            "RELEASING": ("Airing", "#16a34a", "#dcfce7"),
+            "FINISHED": ("Finished", "#64748b", "#e2e8f0"),
+            "NOT_YET_RELEASED": ("Upcoming", "#d97706", "#fef3c7"),
+            "CANCELLED": ("Cancelled", "#dc2626", "#fee2e2"),
+            "HIATUS": ("Hiatus", "#9333ea", "#f3e8ff"),
+        }
+        if status_raw in STATUS_DISPLAY:
+            display_text, bg_color, text_color = STATUS_DISPLAY[status_raw]
+            self.airing_status_label.setText(display_text)
+            self.airing_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.airing_status_label.setStyleSheet(
+                f"QLabel#DetailAiringStatus {{ background-color: {bg_color}; color: {text_color}; "
+                f"font-size: 11px; font-weight: bold; padding: 4px 14px; "
+                f"border-radius: 4px; }}"
+            )
+            self.airing_status_label.setMaximumWidth(120)
+            self.airing_status_label.show()
+
+        # Also update genres and synopsis if they were missing
+        if not self.genres and meta.get("genres"):
+            self.genres = meta["genres"]
+            self.genres_label.setText(f"Genres: {', '.join(self.genres)}")
+        if self.synopsis == "No synopsis available." and meta.get("description"):
+            raw = meta["description"]
+            cleaned = raw.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+            cleaned = cleaned.replace("<i>", "").replace("</i>", "").replace("<b>", "").replace("</b>", "").strip()
+            self.synopsis = cleaned
+            self.synopsis_label.setText(cleaned)
 
     def load_episodes(self):
         self.episode_list_widget.clear()

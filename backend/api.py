@@ -55,6 +55,7 @@ query ($search: String) {
       genres
       averageScore
       episodes
+      status
     }
   }
 }

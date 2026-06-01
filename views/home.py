@@ -69,7 +69,7 @@ GENRE_SECTIONS = {"Trending", "Popular", "Top Rated"}
 
 GENRES = [
     "Action", "Adventure", "Comedy", "Drama", "Fantasy",
-    "Horror", "Mecha", "Mystery", "Psychological", "Romance",
+    "Horror", "Mecha", "Music", "Mystery", "Psychological", "Romance",
     "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller",
 ]
 
@@ -502,6 +502,28 @@ class AnimeCard(QFrame):
                      (anime.get("title") or {}).get("romaji") or "Unknown"
         self.cover_label.setText(_truncate(title_text, 20))
         self.cover_label.setWordWrap(True)
+
+        # Status badge — overlay on the cover image
+        status_raw = anime.get("status") or ""
+        STATUS_DISPLAY = {
+            "RELEASING": ("Airing", "#16a34a", "#dcfce7"),
+            "FINISHED": ("Finished", "#64748b", "#e2e8f0"),
+            "NOT_YET_RELEASED": ("Upcoming", "#d97706", "#fef3c7"),
+            "CANCELLED": ("Cancelled", "#dc2626", "#fee2e2"),
+            "HIATUS": ("Hiatus", "#9333ea", "#f3e8ff"),
+        }
+        if status_raw in STATUS_DISPLAY:
+            display_text, bg_color, text_color = STATUS_DISPLAY[status_raw]
+            self.status_badge = QLabel(display_text, self.cover_label)
+            self.status_badge.setObjectName("CardStatusBadge")
+            self.status_badge.setStyleSheet(
+                f"QLabel#CardStatusBadge {{ background-color: {bg_color}; color: {text_color}; "
+                f"font-size: 9px; font-weight: bold; padding: 2px 6px; "
+                f"border-radius: 3px; }}"
+            )
+            self.status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.status_badge.adjustSize()
+            self.status_badge.move(4, 4)
 
         # Title label — word-wrap, max 2 lines height
         title_label = QLabel(_truncate(title_text, 28))
