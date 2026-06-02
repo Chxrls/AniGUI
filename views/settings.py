@@ -70,6 +70,15 @@ class SettingsView(QWidget):
         scroll.setObjectName("ViewScrollArea")
 
         self.settings_container = QWidget()
+        self.settings_container.setObjectName("SettingsContainer")
+        self.settings_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.settings_container.setStyleSheet(apply_theme(
+            "QWidget#SettingsContainer {"
+            "  background-color: #1a1a1a;"
+            "  border: 1px solid #2e2e2e;"
+            "  border-radius: 8px;"
+            "}"
+        ))
         scroll.setWidget(self.settings_container)
         outer.addWidget(scroll)
 
