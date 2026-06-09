@@ -68,6 +68,24 @@ class Database:
                     added_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # Bookmark folders (groups) table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS bookmark_folders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            # Bookmark folder items (many-to-many: folders <-> bookmarks)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS bookmark_folder_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    folder_id INTEGER NOT NULL,
+                    anime_id TEXT NOT NULL,
+                    FOREIGN KEY (folder_id) REFERENCES bookmark_folders(id) ON DELETE CASCADE,
+                    UNIQUE(folder_id, anime_id)
+                )
+            """)
             # Downloads table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS downloads (
@@ -354,6 +372,89 @@ class Database:
                 """,
                 (key, value)
             )
+            conn.commit()
+
+    # Bookmark Folders API
+    def create_bookmark_folder(self, name: str) -> int:
+        with self._get_conn() as conn:
+            cur = conn.execute(
+                "INSERT INTO bookmark_folders (name) VALUES (?)",
+                (name,)
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def rename_bookmark_folder(self, folder_id: int, new_name: str):
+        with self._get_conn() as conn:
+            conn.execute(
+                "UPDATE bookmark_folders SET name = ? WHERE id = ?",
+                (new_name, folder_id)
+            )
+            conn.commit()
+
+    def delete_bookmark_folder(self, folder_id: int):
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM bookmark_folder_items WHERE folder_id = ?", (folder_id,))
+            conn.execute("DELETE FROM bookmark_folders WHERE id = ?", (folder_id,))
+            conn.commit()
+
+    def get_bookmark_folders(self) -> list[dict]:
+        with self._get_conn() as conn:
+            cur = conn.execute("SELECT * FROM bookmark_folders ORDER BY created_at ASC")
+            return [dict(row) for row in cur.fetchall()]
+
+    def add_bookmark_to_folder(self, folder_id: int, anime_id: str):
+        with self._get_conn() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO bookmark_folder_items (folder_id, anime_id) VALUES (?, ?)",
+                (folder_id, anime_id)
+            )
+            conn.commit()
+
+    def remove_bookmark_from_folder(self, folder_id: int, anime_id: str):
+        with self._get_conn() as conn:
+            conn.execute(
+                "DELETE FROM bookmark_folder_items WHERE folder_id = ? AND anime_id = ?",
+                (folder_id, anime_id)
+            )
+            conn.commit()
+
+    def get_bookmarks_in_folder(self, folder_id: int) -> list[dict]:
+        with self._get_conn() as conn:
+            cur = conn.execute(
+                """
+                SELECT b.* FROM bookmarks b
+                INNER JOIN bookmark_folder_items bfi ON b.anime_id = bfi.anime_id
+                WHERE bfi.folder_id = ?
+                ORDER BY b.added_at DESC
+                """,
+                (folder_id,)
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def get_folders_for_bookmark(self, anime_id: str) -> list[int]:
+        """Return list of folder IDs that contain this bookmark."""
+        with self._get_conn() as conn:
+            cur = conn.execute(
+                "SELECT folder_id FROM bookmark_folder_items WHERE anime_id = ?",
+                (anime_id,)
+            )
+            return [row["folder_id"] for row in cur.fetchall()]
+
+    def get_full_watch_history(self) -> list[dict]:
+        """Return all watch history entries, most recent first."""
+        with self._get_conn() as conn:
+            cur = conn.execute(
+                """
+                SELECT * FROM watch_history
+                ORDER BY watched_at DESC
+                """
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def remove_watch_history_entry(self, entry_id: int):
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM watch_history WHERE id = ?", (entry_id,))
             conn.commit()
 
 # Single global instance

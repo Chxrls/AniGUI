@@ -315,6 +315,61 @@ QMessageBox QPushButton:pressed {
     background-color: #c084fc;
     color: #0f0f0f;
 }
+
+/* Context Menu Styling */
+QMenu#ContextMenu {
+    background-color: #1a1a1a;
+    border: 1px solid #2e2e2e;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+QMenu#ContextMenu::item {
+    color: #e8e8e8;
+    padding: 6px 20px;
+    border-radius: 4px;
+}
+
+QMenu#ContextMenu::item:selected {
+    background-color: #242424;
+    color: #c084fc;
+}
+
+/* Input Dialog Styling */
+QInputDialog {
+    background-color: #1a1a1a;
+}
+
+QInputDialog QLabel {
+    color: #e8e8e8;
+    font-size: 13px;
+}
+
+QInputDialog QLineEdit {
+    background-color: #242424;
+    color: #e8e8e8;
+    border: 1px solid #2e2e2e;
+    border-radius: 4px;
+    padding: 6px 10px;
+}
+
+QInputDialog QLineEdit:focus {
+    border-color: #c084fc;
+}
+
+QInputDialog QPushButton {
+    background-color: #242424;
+    color: #e8e8e8;
+    border: 1px solid #2e2e2e;
+    border-radius: 4px;
+    padding: 6px 16px;
+    min-width: 60px;
+}
+
+QInputDialog QPushButton:hover {
+    border-color: #c084fc;
+    background-color: #2e2e2e;
+}
 """
 
 def get_stylesheet(theme: str = "dark") -> str:
