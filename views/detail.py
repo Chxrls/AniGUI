@@ -181,7 +181,17 @@ class AnimeDetailWidget(QWidget):
         self.bookmark_btn.clicked.connect(self.toggle_bookmark)
         self.update_bookmark_button_ui()
         controls_layout.addWidget(self.bookmark_btn)
-        
+
+        # Folder assignment dropdown
+        self.folder_selector = QComboBox(self)
+        self.folder_selector.view().setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.folder_selector.setObjectName("FolderSelector")
+        self.folder_selector.setMinimumWidth(140)
+        self.folder_selector.setFixedHeight(self.bookmark_btn.sizeHint().height())
+        self._refresh_folder_selector()
+        self.folder_selector.currentIndexChanged.connect(self._on_folder_selected)
+        controls_layout.addWidget(self.folder_selector)
+
         # Download button with Dropdown Menu
         self.download_btn = QPushButton("Download", self)
         self.download_btn.setObjectName("DownloadButton")
@@ -321,6 +331,57 @@ class AnimeDetailWidget(QWidget):
                 dub_count=self.dub_count
             )
         self.update_bookmark_button_ui()
+        self._refresh_folder_selector()
+
+    def _refresh_folder_selector(self):
+        """Populate the folder dropdown with available folders."""
+        self.folder_selector.blockSignals(True)
+        self.folder_selector.clear()
+        self.folder_selector.addItem("Add to folder...", None)
+
+        folders = db.get_bookmark_folders()
+        if not folders:
+            self.folder_selector.setItemText(0, "No folders yet")
+            self.folder_selector.blockSignals(False)
+            return
+
+        current_folder_ids = db.get_folders_for_bookmark(self.anime_id)
+        for folder in folders:
+            prefix = "✓  " if folder["id"] in current_folder_ids else ""
+            self.folder_selector.addItem(f"{prefix}📁 {folder['name']}", folder["id"])
+
+        self.folder_selector.setCurrentIndex(0)
+        self.folder_selector.blockSignals(False)
+
+    def _on_folder_selected(self, index: int):
+        """Handle folder selection from the dropdown."""
+        if index <= 0:
+            return
+
+        folder_id = self.folder_selector.currentData()
+        if folder_id is None:
+            return
+
+        # Auto-bookmark if not already bookmarked
+        if not db.is_bookmarked(self.anime_id):
+            db.add_bookmark(
+                anime_id=self.anime_id,
+                anime_title=self.title,
+                thumbnail_url=self.thumb_path,
+                sub_count=self.sub_count,
+                dub_count=self.dub_count
+            )
+            self.update_bookmark_button_ui()
+
+        # Toggle folder assignment
+        current_folder_ids = db.get_folders_for_bookmark(self.anime_id)
+        if folder_id in current_folder_ids:
+            db.remove_bookmark_from_folder(folder_id, self.anime_id)
+        else:
+            db.add_bookmark_to_folder(folder_id, self.anime_id)
+
+        # Refresh dropdown to reflect changes
+        self._refresh_folder_selector()
 
     def play_selected_episode(self, item: QListWidgetItem):
         ep_data = item.data(Qt.ItemDataRole.UserRole)

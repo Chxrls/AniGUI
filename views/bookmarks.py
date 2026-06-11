@@ -386,12 +386,44 @@ class BookmarksView(QWidget):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(10)
 
-        # --- Tab bar ---
+        # --- Top bar: Tab bar + separator + Folder filter buttons ---
+        top_bar = QHBoxLayout()
+        top_bar.setContentsMargins(0, 0, 0, 0)
+        top_bar.setSpacing(6)
+
+        # Tab buttons (Bookmarked / History / Create Folder)
         self.tab_bar = BookmarkTabBar(
             [self.TAB_BOOKMARKED, self.TAB_HISTORY, self.TAB_FOLDERS],
             self._on_tab_changed
         )
-        root.addWidget(self.tab_bar)
+        top_bar.addWidget(self.tab_bar)
+
+        # Vertical separator between tabs and folder filters
+        self._folder_separator = QFrame()
+        self._folder_separator.setFrameShape(QFrame.Shape.VLine)
+        self._folder_separator.setFixedHeight(28)
+        self._folder_separator.setStyleSheet(apply_theme("color: #444444;"))
+        top_bar.addWidget(self._folder_separator)
+
+        # Folder filter scroll area (horizontal, inline with tabs)
+        self._folder_filter_scroll = QScrollArea()
+        self._folder_filter_scroll.setWidgetResizable(True)
+        self._folder_filter_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._folder_filter_scroll.setFixedHeight(38)
+        self._folder_filter_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._folder_filter_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._folder_filter_scroll.setStyleSheet(apply_theme("background: transparent; border: none;"))
+
+        self._folder_filter_container = QWidget()
+        self._folder_filter_layout = QHBoxLayout(self._folder_filter_container)
+        self._folder_filter_layout.setContentsMargins(0, 0, 0, 0)
+        self._folder_filter_layout.setSpacing(6)
+        self._folder_filter_layout.addStretch()
+
+        self._folder_filter_scroll.setWidget(self._folder_filter_container)
+        top_bar.addWidget(self._folder_filter_scroll, stretch=1)
+
+        root.addLayout(top_bar)
 
         # --- Content stack ---
         self.stack = QStackedWidget(self)
@@ -429,11 +461,7 @@ class BookmarksView(QWidget):
         left_vl.setContentsMargins(0, 0, 0, 0)
         left_vl.setSpacing(8)
 
-        # Folder sidebar
-        self.folder_sidebar = FolderSidebar(self._on_folder_select, self)
-        left_vl.addWidget(self.folder_sidebar)
-
-        # Detail panel below folders
+        # Detail panel (no sidebar — folders are now in the top bar)
         self.detail_container = QWidget()
         self.detail_container.setObjectName("BookmarksLeftPanel")
         self.detail_container.setMinimumWidth(220)
@@ -624,6 +652,11 @@ class BookmarksView(QWidget):
     # ==================================================================
 
     def _on_tab_changed(self, tab_label: str):
+        # Show folder filter bar only on the Bookmarked tab
+        show_folders = (tab_label == self.TAB_BOOKMARKED)
+        self._folder_separator.setVisible(show_folders)
+        self._folder_filter_scroll.setVisible(show_folders)
+
         if tab_label == self.TAB_BOOKMARKED:
             self.stack.setCurrentIndex(0)
             self._refresh_bookmarks()
@@ -642,7 +675,60 @@ class BookmarksView(QWidget):
             folders = db.get_bookmark_folders()
             name = next((f["name"] for f in folders if f["id"] == folder_id), "Folder")
             self.title_label.setText(f"📁  {name}")
+        self._refresh_folder_filter_bar()
         self._refresh_bookmarks()
+
+    def _refresh_folder_filter_bar(self):
+        """Rebuild the horizontal folder filter buttons in the top bar."""
+        # Clear existing buttons
+        while self._folder_filter_layout.count():
+            item = self._folder_filter_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # "All Bookmarks" button
+        all_btn = QPushButton("All Bookmarks")
+        all_btn.setCheckable(True)
+        all_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        all_btn.setFixedHeight(32)
+        all_btn.setObjectName("FolderFilterBtn")
+        is_all_active = (self._active_folder_id is None)
+        all_btn.setChecked(is_all_active)
+        self._style_folder_btn(all_btn, is_all_active)
+        all_btn.clicked.connect(lambda: self._on_folder_select(None))
+        self._folder_filter_layout.addWidget(all_btn)
+
+        # Folder buttons
+        folders = db.get_bookmark_folders()
+        for folder in folders:
+            btn = QPushButton(f"📁 {folder['name']}")
+            btn.setCheckable(True)
+            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            btn.setFixedHeight(32)
+            btn.setObjectName("FolderFilterBtn")
+            is_active = (folder["id"] == self._active_folder_id)
+            btn.setChecked(is_active)
+            self._style_folder_btn(btn, is_active)
+            btn.clicked.connect(lambda checked, fid=folder["id"]: self._on_folder_select(fid))
+            self._folder_filter_layout.addWidget(btn)
+
+        self._folder_filter_layout.addStretch()
+
+    def _style_folder_btn(self, btn: QPushButton, active: bool):
+        """Style a folder filter button (active vs inactive)."""
+        if active:
+            btn.setStyleSheet(apply_theme(
+                "QPushButton { background-color: #7c3aed; color: #f0f0f0; "
+                "border: none; border-radius: 16px; padding: 0 16px; "
+                "font-weight: bold; font-size: 12px; }"
+            ))
+        else:
+            btn.setStyleSheet(apply_theme(
+                "QPushButton { background-color: #2a2a2a; color: #aaaaaa; "
+                "border: 1px solid #3a3a3a; border-radius: 16px; padding: 0 16px; "
+                "font-size: 12px; }"
+                "QPushButton:hover { color: #e8e8e8; border-color: #7c3aed; }"
+            ))
 
     # ------------------------------------------------------------------
     # Bookmarked tab logic
@@ -889,7 +975,7 @@ class BookmarksView(QWidget):
         db.create_bookmark_folder(name)
         self.folder_input.clear()
         self._refresh_folders_tab()
-        self.folder_sidebar.refresh()
+        self._refresh_folder_filter_bar()
 
     def _rename_folder(self, folder: dict):
         new_name, ok = QInputDialog.getText(
@@ -906,7 +992,7 @@ class BookmarksView(QWidget):
                 return
             db.rename_bookmark_folder(folder["id"], new_name)
             self._refresh_folders_tab()
-            self.folder_sidebar.refresh()
+            self._refresh_folder_filter_bar()
 
     def _delete_folder(self, folder: dict):
         reply = QMessageBox.question(
@@ -920,7 +1006,7 @@ class BookmarksView(QWidget):
             if self._active_folder_id == folder["id"]:
                 self._active_folder_id = None
             self._refresh_folders_tab()
-            self.folder_sidebar.refresh()
+            self._refresh_folder_filter_bar()
 
     # ==================================================================
     # Public API
@@ -928,7 +1014,7 @@ class BookmarksView(QWidget):
 
     def refresh(self):
         """Called when the Bookmarks tab is selected in the sidebar."""
-        self.folder_sidebar.refresh()
+        self._refresh_folder_filter_bar()
         current_tab = self.stack.currentIndex()
         if current_tab == 0:
             self._refresh_bookmarks()
