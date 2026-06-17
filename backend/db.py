@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import threading
-from datetime import datetime, timedelta
 from typing import Any, Optional
 
 DB_DIR = os.path.expanduser("~/.config/anigui")
@@ -97,14 +96,6 @@ class Database:
                     file_size_bytes INTEGER,
                     status TEXT DEFAULT 'queued',
                     added_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            # GraphQL and other API query cache table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS api_cache (
-                    key TEXT PRIMARY KEY,
-                    value TEXT,
-                    expires_at TIMESTAMP
                 )
             """)
             # Settings table
@@ -319,42 +310,6 @@ class Database:
             conn.execute("DELETE FROM downloads WHERE id = ?", (download_id,))
             conn.commit()
 
-    # Caching API
-    def get_cached(self, key: str) -> Optional[str]:
-        with self._get_conn() as conn:
-            cur = conn.execute("SELECT value, expires_at FROM api_cache WHERE key = ?", (key,))
-            row = cur.fetchone()
-            if row:
-                expires_at = datetime.fromisoformat(row["expires_at"])
-                if datetime.now() < expires_at:
-                    return row["value"]
-                else:
-                    # Expired, clean up
-                    conn.execute("DELETE FROM api_cache WHERE key = ?", (key,))
-                    conn.commit()
-            return None
-
-    def set_cached(self, key: str, value: str, ttl_seconds: int = 86400):
-        with self._get_conn() as conn:
-            expires_at = (datetime.now() + timedelta(seconds=ttl_seconds)).isoformat()
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO api_cache (key, value, expires_at)
-                VALUES (?, ?, ?)
-                """,
-                (key, value, expires_at)
-            )
-            conn.commit()
-
-    def clear_cache(self):
-        with self._get_conn() as conn:
-            conn.execute("DELETE FROM api_cache")
-            conn.commit()
-
-    def get_db_size(self) -> int:
-        if os.path.exists(DB_PATH):
-            return os.path.getsize(DB_PATH)
-        return 0
 
     # Settings API
     def get_setting(self, key: str, default: Any = None) -> Any:

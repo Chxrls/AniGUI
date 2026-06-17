@@ -221,7 +221,13 @@ def decode_hex_url(encoded: str) -> str:
     decoded = decoded.replace("/clock", "/clock.json")
     return decoded
 
-def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = "sub") -> str:
+def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = "sub") -> tuple[str, str]:
+    """Resolve a playable stream URL for the given episode.
+
+    Returns a tuple of (stream_url, referer) where *referer* is the page
+    that should be sent as the HTTP Referer header when fetching the stream
+    (required by CDNs like mp4upload).
+    """
     source_data = fetch_episode_sources(anime_id, episode_str, translation_type)
     if not source_data:
         raise RuntimeError("No episode data returned from API.")
@@ -243,16 +249,18 @@ def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = 
     source_urls.sort(key=lambda s: float(s.get("priority", 0)), reverse=True)
     errors = []
 
+    _DEFAULT_REFERER = "https://allmanga.to"
+
     for source in source_urls:
         source_url = source.get("sourceUrl", "")
         source_name = source.get("sourceName", "?")
         source_type = source.get("type", "")
 
         if source_type == "player" and source_url.startswith("http"):
-            return source_url
+            return source_url, _DEFAULT_REFERER
 
         if source_url.startswith("--"):
-            decoded = decode_hex_url(source_url)
+            decoded = decode_hex_url(source_url).strip()
             if decoded.startswith("/"):
                 embed_url = f"https://{ALLANIME_BASE}{decoded}"
             else:
@@ -260,13 +268,23 @@ def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = 
             try:
                 stream = _fetch_embed_stream(embed_url)
                 if stream:
-                    return stream
+                    return stream, embed_url
             except Exception as e:
                 errors.append(f"  {source_name}: embed fetch failed - {e}")
                 continue
 
         if source_url.startswith("http") and ("m3u8" in source_url or ".mp4" in source_url):
-            return source_url
+            return source_url, _DEFAULT_REFERER
+
+        # Try iframe HTTP sources through the embed fetcher as a fallback
+        if source_type == "iframe" and source_url.startswith("http"):
+            try:
+                stream = _fetch_embed_stream(source_url)
+                if stream:
+                    return stream, source_url
+            except Exception as e:
+                errors.append(f"  {source_name}: iframe embed failed - {e}")
+                continue
 
     detail = "\n".join(errors) if errors else "No directly playable URLs found."
     raise RuntimeError(f"Could not resolve a playable URL.\n{detail}")
@@ -296,22 +314,27 @@ def _fetch_embed_stream(embed_url: str) -> str | None:
             pass
 
         patterns = [
-            r'"(https?://[^"]*\.m3u8[^"]*)"',
-            r'"(https?://[^"]*\.mp4[^"]*)"',
-            r"'(https?://[^']*\.m3u8[^']*)'",
-            r"'(https?://[^']*\.mp4[^']*)'",
+            r'"(https?://[^"]*\.m3u8(?:\?[^"]*)?)"',
+            r'"(https?://[^"]*\.mp4(?:\?[^"]*)?)"',
+            r"'(https?://[^']*\.m3u8(?:\?[^']*)?)'",
+            r"'(https?://[^']*\.mp4(?:\?[^']*)?)'",
             r'"link"\s*:\s*"(https?://[^"]*)"',
             r'"file"\s*:\s*"(https?://[^"]*)"',
         ]
+        # Extensions that are clearly not playable media
+        _NON_MEDIA = ('.css', '.js', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.woff', '.woff2', '.ttf')
         for pattern in patterns:
             match = re.search(pattern, text)
             if match:
-                return match.group(1)
+                url = match.group(1)
+                path = url.split('?')[0]
+                if not any(path.endswith(ext) for ext in _NON_MEDIA):
+                    return url
     except requests.RequestException:
         pass
     return None
 
-def launch_player(url: str, episode_label: str) -> None:
+def launch_player(url: str, episode_label: str, referer: str = "https://allmanga.to") -> None:
     from anigui.backend.db import db
     player_path = db.get_setting("player_path", "mpv")
     hwdec_enabled = db.get_setting("hwdec_enabled", "false")
@@ -329,7 +352,7 @@ def launch_player(url: str, episode_label: str) -> None:
     if is_mpv:
         cmd.extend([
             "--no-terminal",
-            "--http-header-fields=Referer: https://allmanga.to",
+            f"--http-header-fields=Referer: {referer}",
             f"--title={episode_label}",
         ])
         if hwdec_enabled == "true":

@@ -169,32 +169,6 @@ class SettingsView(QWidget):
         grid.addWidget(_make_label("Custom Player Path"), row, 1, _RIGHT)
         row += 1
 
-        # 5. API Cache Size
-        self.cache_size_label = QLabel(self.format_size(db.get_db_size()),
-                                       self.settings_container)
-        self.cache_size_label.setStyleSheet(apply_theme("color: #888888; font-size: 13px;"))
-        self.cache_size_label.setSizePolicy(QSizePolicy.Policy.Minimum,
-                                            QSizePolicy.Policy.Fixed)
-
-        self.clear_cache_btn = QPushButton("Clear Cache", self.settings_container)
-        self.clear_cache_btn.setObjectName("DownloadButton")
-        self.clear_cache_btn.setFixedWidth(100)
-        self.clear_cache_btn.setSizePolicy(QSizePolicy.Policy.Fixed,
-                                           QSizePolicy.Policy.Fixed)
-        self.clear_cache_btn.clicked.connect(self.clear_cache)
-
-        cache_w = QWidget()
-        cache_l = QHBoxLayout(cache_w)
-        cache_l.setContentsMargins(0, 0, 0, 0)
-        cache_l.setSpacing(8)
-        cache_l.addWidget(self.cache_size_label)
-        cache_l.addStretch()
-        cache_l.addWidget(self.clear_cache_btn)
-
-        grid.addWidget(cache_w, row, 0)
-        grid.addWidget(_make_label("API Cache Size"), row, 1, _RIGHT)
-        row += 1
-
 
         # ── Divider ────────────────────────────────────────────────
         grid.addWidget(_make_divider(), row, 0, 1, 2)
@@ -345,9 +319,6 @@ class SettingsView(QWidget):
             size_bytes /= 1024
         return f"{size_bytes:.1f} PB"
 
-    def clear_cache(self):
-        db.clear_cache()
-        self.cache_size_label.setText(self.format_size(db.get_db_size()))
 
     def update_default_translation(self):
         val = self.trans_combo.currentData()

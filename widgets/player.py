@@ -6,7 +6,8 @@ def launch_player_and_save_history(
     anime_id: str, 
     anime_title: str, 
     episode_str: str, 
-    translation_type: str
+    translation_type: str,
+    referer: str = "https://allmanga.to"
 ):
     """Wrapper that calls launch_player to play the video in mpv, and
 
@@ -15,7 +16,7 @@ def launch_player_and_save_history(
     episode_label = f"{anime_title} Ep {episode_str}"
     
     # Launch player
-    backend_launch_player(url, episode_label)
+    backend_launch_player(url, episode_label, referer)
     
     # Write to watch history DB immediately after launching
     db.add_watch_history(

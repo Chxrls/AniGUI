@@ -82,7 +82,6 @@ class SearchView(QWidget):
         self.on_card_clicked = on_card_clicked
  
         self._cards:         list[AnimeCard] = []
-        self._default_cache: list[dict]      = []
         self._current_mode:  str             = self._MODE_DEFAULT
         self._resolve_worker: _AllAnimeResolveWorker | None = None
  
@@ -267,10 +266,6 @@ class SearchView(QWidget):
 
     # Default grid — top 40 ranked (AniList)
     def _load_default(self):
-        if self._default_cache:
-            self._render_anilist_cards(self._default_cache)
-            self._current_mode = self._MODE_DEFAULT
-            return
         self._show_status("Loading top ranked anime…")
         worker = DefaultResultsWorker(per_page=40)
         worker.signals.finished.connect(self._on_default_loaded)
@@ -280,7 +275,6 @@ class SearchView(QWidget):
         QThreadPool.globalInstance().start(worker)
  
     def _on_default_loaded(self, media_list: list[dict]):
-        self._default_cache = media_list
         self._current_mode  = self._MODE_DEFAULT
         self._render_anilist_cards(media_list)
  

@@ -396,11 +396,12 @@ class AnimeDetailWidget(QWidget):
         
         # Async stream resolution
         worker = EpisodeResolveWorker(self.anime_id, ep_str, translation_type)
-        worker.signals.finished.connect(lambda url: self._on_stream_resolved(url, ep_str, translation_type))
+        worker.signals.finished.connect(lambda result: self._on_stream_resolved(result, ep_str, translation_type))
         worker.signals.error.connect(self._on_stream_failed)
         QThreadPool.globalInstance().start(worker)
 
-    def _on_stream_resolved(self, url: str, ep_str: str, translation_type: str):
+    def _on_stream_resolved(self, result, ep_str: str, translation_type: str):
+        url, referer = result
         self.status_label.setText("Success")
         self.status_label.setStyleSheet(apply_theme("color: #888888;"))
         
@@ -411,7 +412,8 @@ class AnimeDetailWidget(QWidget):
                 anime_id=self.anime_id,
                 anime_title=self.title,
                 episode_str=ep_str,
-                translation_type=translation_type
+                translation_type=translation_type,
+                referer=referer
             )
             # Reload episode list to reflect Watched status
             self.load_episodes()
