@@ -20,6 +20,7 @@ class WorkerSignals(QObject):
     """Container for signals emitted by the background workers."""
     finished = pyqtSignal(object)  # Can be list, dict, str, etc.
     error = pyqtSignal(str)
+    progress = pyqtSignal(str)
 
 class DownloadManager(QObject):
     progress_updated = pyqtSignal(int, dict)
@@ -185,7 +186,7 @@ class MetadataWorker(QRunnable):
             self.signals.error.emit(str(e))
 
 class ThumbnailWorker(QRunnable):
-    """Worker to fetch cover images and save to local disk.
+    """Worker to fetch and cache cover images to local disk.
 
     Saves files to ~/.config/anigui/thumbnails/<hash>.jpg.
     Emits the local file path on success.
@@ -203,8 +204,14 @@ class ThumbnailWorker(QRunnable):
         try:
             os.makedirs(THUMB_DIR, exist_ok=True)
             
+            # Hash thumbnail URL for caching
             url_hash = hashlib.sha256(self.url.encode("utf-8")).hexdigest()[:16]
             filepath = os.path.join(THUMB_DIR, f"{url_hash}.jpg")
+
+            # Check cache
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                self.signals.finished.emit(filepath)
+                return
 
             # Download
             resp = requests.get(self.url, timeout=10)
@@ -228,7 +235,12 @@ class EpisodeResolveWorker(QRunnable):
 
     def run(self):
         try:
-            url, referer = resolve_stream_url(self.anime_id, self.episode_str, self.translation_type)
+            url, referer = resolve_stream_url(
+                self.anime_id, 
+                self.episode_str, 
+                self.translation_type,
+                progress_callback=self.signals.progress.emit
+            )
             self.signals.finished.emit((url, referer))
         except Exception as e:
             self.signals.error.emit(str(e))

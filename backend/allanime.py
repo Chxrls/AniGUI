@@ -221,7 +221,7 @@ def decode_hex_url(encoded: str) -> str:
     decoded = decoded.replace("/clock", "/clock.json")
     return decoded
 
-def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = "sub") -> tuple[str, str]:
+def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = "sub", progress_callback: callable = None) -> tuple[str, str]:
     """Resolve a playable stream URL for the given episode.
 
     Returns a tuple of (stream_url, referer) where *referer* is the page
@@ -250,7 +250,14 @@ def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = 
     errors = []
 
     _DEFAULT_REFERER = "https://allmanga.to"
+    _MAX_PRIMARY_ATTEMPTS = 10   # Budget for hex-encoded embed sources
+    _MAX_IFRAME_ATTEMPTS = 10    # Separate budget for iframe fallbacks
+    primary_attempts = 0
 
+    # Collect iframe sources for fallback (tried only after primary sources)
+    iframe_sources = []
+
+    # --- Pass 1: Try all primary sources (player, hex-encoded, direct URLs) ---
     for source in source_urls:
         source_url = source.get("sourceUrl", "")
         source_name = source.get("sourceName", "?")
@@ -260,12 +267,22 @@ def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = 
             return source_url, _DEFAULT_REFERER
 
         if source_url.startswith("--"):
+            if primary_attempts >= _MAX_PRIMARY_ATTEMPTS:
+                errors.append(f"  {source_name}: skipped (max primary attempts reached)")
+                continue
             decoded = decode_hex_url(source_url).strip()
+            if "clock.json" in decoded:
+                errors.append(f"  {source_name}: skipped (clock.json endpoint is not a direct embed)")
+                continue
+
             if decoded.startswith("/"):
                 embed_url = f"https://{ALLANIME_BASE}{decoded}"
             else:
                 embed_url = decoded
             try:
+                primary_attempts += 1
+                if progress_callback:
+                    progress_callback(f"Trying source {primary_attempts}/{_MAX_PRIMARY_ATTEMPTS} (primary)...")
                 stream = _fetch_embed_stream(embed_url)
                 if stream:
                     return stream, embed_url
@@ -276,15 +293,28 @@ def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = 
         if source_url.startswith("http") and ("m3u8" in source_url or ".mp4" in source_url):
             return source_url, _DEFAULT_REFERER
 
-        # Try iframe HTTP sources through the embed fetcher as a fallback
+        # Defer iframe sources to fallback pass
         if source_type == "iframe" and source_url.startswith("http"):
-            try:
-                stream = _fetch_embed_stream(source_url)
-                if stream:
-                    return stream, source_url
-            except Exception as e:
-                errors.append(f"  {source_name}: iframe embed failed - {e}")
-                continue
+            iframe_sources.append(source)
+
+    # --- Pass 2: Try iframe sources as fallback ---
+    iframe_attempts = 0
+    for source in iframe_sources:
+        if iframe_attempts >= _MAX_IFRAME_ATTEMPTS:
+            errors.append(f"  {source.get('sourceName', '?')}: skipped (max iframe attempts reached)")
+            break
+        source_url = source.get("sourceUrl", "")
+        source_name = source.get("sourceName", "?")
+        try:
+            iframe_attempts += 1
+            if progress_callback:
+                progress_callback(f"Trying source {iframe_attempts}/{_MAX_IFRAME_ATTEMPTS} (fallback)...")
+            stream = _fetch_embed_stream(source_url)
+            if stream:
+                return stream, source_url
+        except Exception as e:
+            errors.append(f"  {source_name}: iframe embed failed - {e}")
+            continue
 
     detail = "\n".join(errors) if errors else "No directly playable URLs found."
     raise RuntimeError(f"Could not resolve a playable URL.\n{detail}")
@@ -295,7 +325,7 @@ def _fetch_embed_stream(embed_url: str) -> str | None:
         resp = requests.get(embed_url, headers={
             "User-Agent": API_HEADERS["User-Agent"],
             "Referer": "https://allmanga.to",
-        }, timeout=10)
+        }, timeout=5)
         resp.raise_for_status()
         text = resp.text
 

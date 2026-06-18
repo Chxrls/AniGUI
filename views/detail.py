@@ -290,9 +290,12 @@ class AnimeDetailWidget(QWidget):
         # Fetch list of episodes via AllAnime mapping
         ep_list = fetch_episodes(self.anime_data, translation_type)
         
+        # Batch-fetch watched status in a single DB query
+        watched_set = db.get_watched_episodes(self.anime_id, translation_type)
+        
         for ep in ep_list:
             ep_str = ep["number_str"]
-            is_watched = db.is_watched(self.anime_id, ep_str, translation_type)
+            is_watched = ep_str in watched_set
             
             item = QListWidgetItem()
             # Embed episode object
@@ -394,11 +397,19 @@ class AnimeDetailWidget(QWidget):
         self.status_label.setText("Resolving stream URL...")
         self.status_label.setStyleSheet(apply_theme("color: #c084fc;"))  # Accent status
         
+        # Store reference to the clicked item for targeted badge update
+        self._playing_item = item
+        
         # Async stream resolution
         worker = EpisodeResolveWorker(self.anime_id, ep_str, translation_type)
+        worker.signals.progress.connect(self._on_stream_progress)
         worker.signals.finished.connect(lambda result: self._on_stream_resolved(result, ep_str, translation_type))
         worker.signals.error.connect(self._on_stream_failed)
         QThreadPool.globalInstance().start(worker)
+
+    def _on_stream_progress(self, message: str):
+        self.status_label.setText(message)
+        self.status_label.setStyleSheet(apply_theme("color: #a78bfa;"))
 
     def _on_stream_resolved(self, result, ep_str: str, translation_type: str):
         url, referer = result
@@ -415,10 +426,23 @@ class AnimeDetailWidget(QWidget):
                 translation_type=translation_type,
                 referer=referer
             )
-            # Reload episode list to reflect Watched status
-            self.load_episodes()
+            # Update only the played episode's badge instead of rebuilding
+            # the entire list (avoids N individual DB queries on main thread)
+            self._mark_episode_watched(ep_str)
         except Exception as e:
             self._on_stream_failed(str(e))
+
+    def _mark_episode_watched(self, ep_str: str):
+        """Update the watched badge on a single episode item without
+        rebuilding the entire episode list widget."""
+        item = getattr(self, "_playing_item", None)
+        if item is not None:
+            label = self.episode_list_widget.itemWidget(item)
+            if label and isinstance(label, QLabel):
+                current_text = label.text()
+                if "[Watched]" not in current_text:
+                    label.setText(f"Ep {ep_str} <font color='#888888'>[Watched]</font>")
+            self._playing_item = None
 
     def _on_stream_failed(self, err_msg: str):
         # Truncate long error messages to keep the status label readable;

@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 import requests
 
-APP_VERSION = "1.2.5-alpha"
+APP_VERSION = "1.2.5 - Alpha"
 
 SECTION_CARD_STYLE = """
     QFrame#AboutSection {
