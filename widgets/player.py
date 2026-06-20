@@ -7,10 +7,10 @@ def launch_player_and_save_history(
     anime_title: str, 
     episode_str: str, 
     translation_type: str,
-    referer: str = "https://allmanga.to"
+    referer: str = "https://allmanga.to",
+    anilist_id: int | None = None
 ):
     """Wrapper that calls launch_player to play the video in mpv, and
-
     records the watch progress to local SQLite.
     """
     episode_label = f"{anime_title} Ep {episode_str}"
@@ -23,5 +23,6 @@ def launch_player_and_save_history(
         anime_id=anime_id,
         anime_title=anime_title,
         episode_str=episode_str,
-        translation_type=translation_type
+        translation_type=translation_type,
+        anilist_id=anilist_id
     )

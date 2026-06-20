@@ -25,12 +25,10 @@ import datetime
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QScrollArea, QGridLayout, QLabel, QApplication, QComboBox, QPushButton, QFrame
 from PyQt6.QtCore import Qt, QTimer, QThreadPool, QThread, pyqtSignal
 from PyQt6.QtGui import QCursor
-from anigui.backend.worker import SearchWorker, DefaultResultsWorker, FilteredSearchWorker
-from anigui.backend.allanime import search_anime as _allanime_search
+from anigui.backend.worker import SearchWorker, DefaultResultsWorker, FilteredSearchWorker, start_worker
 from anigui.widgets.card import AnimeCard
 from anigui.widgets.genre_dropdown import GenreDropdown
 from anigui.utils.theme import apply_theme
-from anigui.utils.matching import best_allanime_match
 
 # Filter option map
 
@@ -44,28 +42,7 @@ STATUS_OPTIONS  = {"Any Status": None, "Releasing": "RELEASING",
 _CURRENT_YEAR = datetime.datetime.now().year
 YEAR_OPTIONS   = {"Any Year": None, **{str(y): y for y in range(_CURRENT_YEAR, 1999, -1)}}
 
-class _AllAnimeResolveWorker(QThread):
-    """Searches AllAnime by title and returns the best-matching result dict.
 
-    Supports fallback search: if the primary (romaji) title returns no
-    confident match, retries with the alt (English) title.  Passes episode
-    count context to the matcher so franchise entries can be disambiguated.
-    """
-    finished = pyqtSignal(dict)
-    error = pyqtSignal(str)
-
-    def __init__(self, title: str):
-        super().__init__()
-        self.title = title
-
-    def run(self):
-        try:
-            results = _allanime_search(self.title)
-            match = best_allanime_match(self.title, results)
-
-            self.finished.emit(match if match else {})
-        except Exception as e:
-            self.error.emit(str(e))
 
 class SearchView(QWidget):
     """View allowing user to search for anime on AllAnime.
@@ -83,7 +60,6 @@ class SearchView(QWidget):
  
         self._cards:         list[AnimeCard] = []
         self._current_mode:  str             = self._MODE_DEFAULT
-        self._resolve_worker: _AllAnimeResolveWorker | None = None
  
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -248,8 +224,8 @@ class SearchView(QWidget):
             # AniList filtered search (with or without text query)
             self._run_filtered_search(query or None, filters)
         else:
-            # Text-only: use AllAnime search (original behaviour)
-            self._run_allanime_search(query)
+            # Text-only search via SearchWorker
+            self._run_text_search(query)
  
     # Filter events
     def _on_filter_changed(self, *_):
@@ -260,7 +236,7 @@ class SearchView(QWidget):
         self._clear_filter_controls(silent=True)
         query = self.search_input.text().strip()
         if query:
-            self._run_allanime_search(query)
+            self._run_text_search(query)
         else:
             self._load_default()
 
@@ -272,11 +248,11 @@ class SearchView(QWidget):
         worker.signals.error.connect(
             lambda e: self._show_status(f"Failed to load defaults: {e}")
         )
-        QThreadPool.globalInstance().start(worker)
+        start_worker(worker)
  
     def _on_default_loaded(self, media_list: list[dict]):
         self._current_mode  = self._MODE_DEFAULT
-        self._render_anilist_cards(media_list)
+        self._render_cards(media_list)
  
     # Filtered search (AniList)
     def _run_filtered_search(self, query: str | None, filters: dict):
@@ -292,40 +268,29 @@ class SearchView(QWidget):
         )
         worker.signals.finished.connect(self._on_filtered_results)
         worker.signals.error.connect(lambda e: self._show_status(f"Error: {e}"))
-        QThreadPool.globalInstance().start(worker)
+        start_worker(worker)
  
     def _on_filtered_results(self, media_list: list[dict]):
         if not media_list:
             self._show_status("No results found for the selected filters.")
             return
-        self._render_anilist_cards(media_list)
+        self._render_cards(media_list)
  
-    # AllAnime text search (no filters active) 
-    def _run_allanime_search(self, query: str):
+    # Text search (no filters active) 
+    def _run_text_search(self, query: str):
         self._current_mode = self._MODE_SEARCH
         self._show_status("Loading…")
         worker = SearchWorker(query)
-        worker.signals.finished.connect(self._on_allanime_results)
+        worker.signals.finished.connect(self._render_cards)
         worker.signals.error.connect(lambda e: self._show_status(f"Error: {e}"))
-        QThreadPool.globalInstance().start(worker)
+        start_worker(worker)
  
-    def _on_allanime_results(self, results: list[dict]):
-        if not results:
+    def _render_cards(self, media_list: list[dict]):
+        """Render AniList media dicts as AnimeCards."""
+        if not media_list:
             self._show_status("No results found.")
             return
-        self.status_label.hide()
-        self.scroll_area.show()
-        self._clear_grid()
-        self._cards.clear()
-        for item in results:
-            card = AnimeCard(item, self)
-            card.clicked.connect(self.on_card_clicked)  # AllAnime ID already present
-            self._cards.append(card)
-        self._rearrange_grid()
- 
-    # AniList card rendering + click handling 
-    def _render_anilist_cards(self, media_list: list[dict]):
-        """Render AniList media dicts as AnimeCards."""
+
         self.status_label.hide()
         self.scroll_area.show()
         self._clear_grid()
@@ -340,6 +305,8 @@ class SearchView(QWidget):
             cover_url = cover.get("extraLarge") or cover.get("large") or ""
  
             anime_dict = {
+                "id":             media.get("id"),  # Native AniList numeric ID
+                "anilist_id":     media.get("id"),  # Alias for Miruro compatibility
                 "name":           name,
                 "english_name":   english if (english and english.lower() != romaji.lower()) else "",
                 "synopsis":       media.get("description") or "",
@@ -356,47 +323,10 @@ class SearchView(QWidget):
             }
  
             card = AnimeCard(anime_dict, self)
-            card.clicked.connect(self._handle_anilist_card_click)
+            card.clicked.connect(self.on_card_clicked)
             self._cards.append(card)
  
         self._rearrange_grid()
- 
-    def _handle_anilist_card_click(self, anime_data: dict):
-        """Resolve AllAnime streaming ID then open detail dialog."""
-        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
- 
-        if self._resolve_worker and self._resolve_worker.isRunning():
-            self._resolve_worker.quit()
- 
-        title_obj    = anime_data.get("title") or {}
-        search_title = (
-            title_obj.get("romaji")
-            or title_obj.get("english")
-            or anime_data.get("name")
-            or "Unknown"
-        )
- 
-        self._resolve_worker = _AllAnimeResolveWorker(search_title)
- 
-        def _on_resolved(match: dict):
-            QApplication.restoreOverrideCursor()
-            merged = dict(anime_data)
-            merged["id"]        = match.get("id", "")
-            merged["sub_count"] = match.get("sub_count", anime_data.get("sub_count", 0))
-            merged["dub_count"] = match.get("dub_count", 0)
-            if "sub_episodes" in match:
-                merged["sub_episodes"] = match["sub_episodes"]
-            if "dub_episodes" in match:
-                merged["dub_episodes"] = match["dub_episodes"]
-            self.on_card_clicked(merged)
- 
-        def _on_error(_: str):
-            QApplication.restoreOverrideCursor()
-            self.on_card_clicked(dict(anime_data))
- 
-        self._resolve_worker.finished.connect(_on_resolved)
-        self._resolve_worker.error.connect(_on_error)
-        self._resolve_worker.start()
  
     # Shared helpers
     def _show_status(self, msg: str):

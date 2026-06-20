@@ -55,12 +55,17 @@ class Database:
                 conn.execute("ALTER TABLE watch_history ADD COLUMN watched INTEGER DEFAULT 0")
             except sqlite3.OperationalError:
                 pass
+            try:
+                conn.execute("ALTER TABLE watch_history ADD COLUMN anilist_id INTEGER")
+            except sqlite3.OperationalError:
+                pass
 
             # Bookmarks table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS bookmarks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     anime_id TEXT UNIQUE,
+                    anilist_id INTEGER,
                     anime_title TEXT,
                     thumbnail_url TEXT,
                     sub_count INTEGER,
@@ -68,6 +73,11 @@ class Database:
                     added_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE bookmarks ADD COLUMN anilist_id INTEGER")
+            except sqlite3.OperationalError:
+                pass
+
             # Bookmark folders (groups) table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS bookmark_folders (
@@ -117,7 +127,7 @@ class Database:
             conn.commit()
 
     # Watch History API
-    def add_watch_history(self, anime_id: str, anime_title: str, episode_str: str, translation_type: str):
+    def add_watch_history(self, anime_id: str, anime_title: str, episode_str: str, translation_type: str, anilist_id: Optional[int] = None):
         with self._get_conn() as conn:
             cur = conn.execute(
                 """
@@ -129,21 +139,27 @@ class Database:
             )
             row = cur.fetchone()
             if row:
-                conn.execute(
-                    "UPDATE watch_history SET watched_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (row["id"],)
-                )
+                if anilist_id:
+                    conn.execute(
+                        "UPDATE watch_history SET watched_at = CURRENT_TIMESTAMP, anilist_id = ? WHERE id = ?",
+                        (anilist_id, row["id"])
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE watch_history SET watched_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (row["id"],)
+                    )
             else:
                 conn.execute(
                     """
-                    INSERT INTO watch_history (anime_id, anime_title, episode_str, translation_type)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO watch_history (anime_id, anime_title, episode_str, translation_type, anilist_id)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
-                    (anime_id, anime_title, episode_str, translation_type)
+                    (anime_id, anime_title, episode_str, translation_type, anilist_id)
                 )
             conn.commit()
 
-    def save_playback_position(self, anime_id: str, anime_title: str, episode_str: str, position: float, duration: float, translation_type: str = "sub"):
+    def save_playback_position(self, anime_id: str, anime_title: str, episode_str: str, position: float, duration: float, translation_type: str = "sub", anilist_id: Optional[int] = None):
         watched = 1 if (duration > 0 and position / duration >= 0.8) else 0
         with self._get_conn() as conn:
             cur = conn.execute(
@@ -156,21 +172,31 @@ class Database:
             )
             row = cur.fetchone()
             if row:
-                conn.execute(
-                    """
-                    UPDATE watch_history 
-                    SET position = ?, duration = ?, watched = CASE WHEN ? = 1 THEN 1 ELSE watched END, watched_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    """,
-                    (position, duration, watched, row["id"])
-                )
+                if anilist_id:
+                    conn.execute(
+                        """
+                        UPDATE watch_history 
+                        SET position = ?, duration = ?, watched = CASE WHEN ? = 1 THEN 1 ELSE watched END, watched_at = CURRENT_TIMESTAMP, anilist_id = ?
+                        WHERE id = ?
+                        """,
+                        (position, duration, watched, anilist_id, row["id"])
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE watch_history 
+                        SET position = ?, duration = ?, watched = CASE WHEN ? = 1 THEN 1 ELSE watched END, watched_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """,
+                        (position, duration, watched, row["id"])
+                    )
             else:
                 conn.execute(
                     """
-                    INSERT INTO watch_history (anime_id, anime_title, episode_str, translation_type, position, duration, watched)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO watch_history (anime_id, anime_title, episode_str, translation_type, position, duration, watched, anilist_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (anime_id, anime_title, episode_str, translation_type, position, duration, watched)
+                    (anime_id, anime_title, episode_str, translation_type, position, duration, watched, anilist_id)
                 )
             conn.commit()
             
@@ -278,14 +304,22 @@ class Database:
             return [dict(row) for row in cur.fetchall()]
 
     # Bookmarks API
-    def add_bookmark(self, anime_id: str, anime_title: str, thumbnail_url: str, sub_count: int, dub_count: int):
+    def add_bookmark(self, anime_id: str, anime_title: str, thumbnail_url: str, sub_count: int, dub_count: int, anilist_id: Optional[int] = None):
         with self._get_conn() as conn:
+            # Check if exists first to preserve anilist_id if not provided
+            cur = conn.execute("SELECT id, anilist_id FROM bookmarks WHERE anime_id = ?", (anime_id,))
+            row = cur.fetchone()
+            
+            final_anilist_id = anilist_id
+            if row and final_anilist_id is None:
+                final_anilist_id = row["anilist_id"]
+
             conn.execute(
                 """
-                INSERT OR REPLACE INTO bookmarks (anime_id, anime_title, thumbnail_url, sub_count, dub_count)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO bookmarks (anime_id, anime_title, thumbnail_url, sub_count, dub_count, anilist_id)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (anime_id, anime_title, thumbnail_url, sub_count, dub_count)
+                (anime_id, anime_title, thumbnail_url, sub_count, dub_count, final_anilist_id)
             )
             conn.commit()
 

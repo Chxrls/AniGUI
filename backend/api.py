@@ -1,18 +1,18 @@
 import hashlib
 import json
+import logging
 import os
 import sys
 import requests
 from typing import Optional, Any
 
-# Import local backend functions
-from anigui.backend.allanime import (
-    search_anime as _allanime_search,
-    fetch_episodes as _allanime_episodes,
-    resolve_stream_url as _allanime_resolve,
-    launch_player as _allanime_launch,
-    check_mpv_installed as _allanime_check_mpv
-)
+log = logging.getLogger(__name__)
+
+# Import Miruro backend (primary provider)
+from anigui.backend import miruro as _miruro
+
+# Import generic player backend
+from anigui.backend.player import launch_player, check_mpv_installed
 
 # Import local db cache
 from anigui.backend.db import db
@@ -20,21 +20,70 @@ from anigui.backend.db import db
 # Import matching utilities
 from anigui.utils.matching import best_anilist_match
 
-# Re-export AllAnime backend APIs
-def search_anime(query: str) -> list[dict]:
-    return _allanime_search(query)
+def search_anime(query: str, page: int = 1, per_page: int = 40) -> list[dict]:
+    """Search for anime using AniList GraphQL API."""
+    if not query:
+        return []
+    
+    variables = {"search": query, "page": page, "perPage": per_page}
+    try:
+        resp = requests.post(
+            ANILIST_API_URL,
+            json={"query": ANILIST_SEARCH_QUERY, "variables": variables},
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            timeout=10
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", {}).get("Page", {}).get("media", [])
+    except Exception as e:
+        log.error("AniList search failed: %s", e)
+        return []
 
 def fetch_episodes(anime: dict, translation_type: str = "sub") -> list[dict]:
-    return _allanime_episodes(anime, translation_type)
+    """Fetch episode list exclusively using Miruro."""
+    anilist_id = anime.get("anilist_id") or anime.get("anilistId") or anime.get("id")
+    if not anilist_id:
+        return []
+    
+    try:
+        return _miruro.fetch_episode_list(int(anilist_id), translation_type)
+    except Exception as e:
+        log.error("Miruro episode fetch failed: %s", e)
+        return []
 
-def resolve_stream_url(anime_id: str, episode_str: str, translation_type: str = "sub", progress_callback: callable = None) -> tuple[str, str]:
-    return _allanime_resolve(anime_id, episode_str, translation_type, progress_callback)
+def resolve_stream_url(
+    anime_id: str,
+    episode_str: str,
+    translation_type: str = "sub",
+    progress_callback: callable = None,
+    anilist_id: int | None = None,
+    miruro_provider: str | None = None,
+) -> tuple[str, str]:
+    """Resolve a playable stream URL exclusively using Miruro."""
+    if not anilist_id:
+        raise ValueError("AniList ID is required to resolve stream URLs via Miruro.")
+        
+    if progress_callback:
+        progress_callback("Trying Miruro providers...")
+        
+    url, referer = _miruro.resolve_stream_url(
+        anilist_id=int(anilist_id),
+        episode_str=episode_str,
+        translation_type=translation_type,
+        provider=miruro_provider,
+        progress_callback=progress_callback,
+    )
+    
+    if url:
+        log.debug("Miruro resolved stream: %s", url[:80])
+        return url, referer
+        
+    raise RuntimeError("Miruro: Could not resolve a playable URL.")
 
-def launch_player(url: str, episode_label: str, referer: str = "https://allmanga.to") -> None:
-    _allanime_launch(url, episode_label, referer)
-
-def check_mpv_installed() -> bool:
-    return _allanime_check_mpv()
+def get_available_providers() -> list[dict]:
+    """Return the list of Miruro streaming providers and their capabilities."""
+    return _miruro.get_available_providers()
 
 # AniList GraphQL configuration
 ANILIST_API_URL = "https://graphql.anilist.co"
@@ -61,9 +110,9 @@ _MEDIA_FIELDS = """
 """
 
 ANILIST_SEARCH_QUERY = """
-query ($search: String) {
-  Page(page: 1, perPage: 5) {
-    media(search: $search, type: ANIME) {
+query ($search: String, $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
       id
       title {
         romaji

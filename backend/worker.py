@@ -16,6 +16,25 @@ def parse_time(time_str: str) -> float:
 
 THUMB_DIR = os.path.expanduser("~/.config/anigui/thumbnails")
 
+_active_workers = set()
+
+def start_worker(worker):
+    """Start a QRunnable worker while keeping its Python object alive.
+    
+    Prevents 'wrapped C/C++ object of type WorkerSignals has been deleted'
+    by keeping a strong Python reference until the worker finishes or errors.
+    """
+    _active_workers.add(worker)
+    
+    def cleanup(*args):
+        _active_workers.discard(worker)
+        
+    if hasattr(worker, 'signals'):
+        worker.signals.finished.connect(cleanup)
+        worker.signals.error.connect(cleanup)
+        
+    QThreadPool.globalInstance().start(worker)
+
 class WorkerSignals(QObject):
     """Container for signals emitted by the background workers."""
     finished = pyqtSignal(object)  # Can be list, dict, str, etc.
@@ -38,10 +57,14 @@ class DownloadManager(QObject):
         self.thread_pool.setMaxThreadCount(count)
         
 
-    def start_download(self, download_id, anime_id, ep_str, translation_type, file_path):
+    def start_download(self, download_id, anime_id, ep_str, translation_type, file_path,
+                       anilist_id=None, miruro_provider=None):
         from anigui.backend.db import db
         from anigui.backend.worker import DownloadWorker
-        worker = DownloadWorker(download_id, anime_id, ep_str, translation_type, file_path)
+        worker = DownloadWorker(
+            download_id, anime_id, ep_str, translation_type, file_path,
+            anilist_id=anilist_id, miruro_provider=miruro_provider,
+        )
         self.active_workers[download_id] = worker
         db.update_download_status(download_id, "downloading")
         self.status_changed.emit(download_id, "downloading")
@@ -225,12 +248,19 @@ class ThumbnailWorker(QRunnable):
             self.signals.error.emit(str(e))
 
 class EpisodeResolveWorker(QRunnable):
-    """Worker to resolve direct stream HLS/MP4 link from AllAnime."""
-    def __init__(self, anime_id: str, episode_str: str, translation_type: str):
+    """Worker to resolve direct stream HLS/MP4 link.
+
+    Tries Miruro first (when *anilist_id* is provided), then falls back
+    to AllAnime.
+    """
+    def __init__(self, anime_id: str, episode_str: str, translation_type: str,
+                 anilist_id: int | None = None, miruro_provider: str | None = None):
         super().__init__()
         self.anime_id = anime_id
         self.episode_str = episode_str
         self.translation_type = translation_type
+        self.anilist_id = anilist_id
+        self.miruro_provider = miruro_provider
         self.signals = WorkerSignals()
 
     def run(self):
@@ -239,7 +269,9 @@ class EpisodeResolveWorker(QRunnable):
                 self.anime_id, 
                 self.episode_str, 
                 self.translation_type,
-                progress_callback=self.signals.progress.emit
+                progress_callback=self.signals.progress.emit,
+                anilist_id=self.anilist_id,
+                miruro_provider=self.miruro_provider,
             )
             self.signals.finished.emit((url, referer))
         except Exception as e:
@@ -247,13 +279,16 @@ class EpisodeResolveWorker(QRunnable):
 
 class DownloadWorker(QRunnable):
     """Worker to download an episode HLS stream to an mp4 file using ffmpeg."""
-    def __init__(self, download_id: int, anime_id: str, episode_str: str, translation_type: str, file_path: str):
+    def __init__(self, download_id: int, anime_id: str, episode_str: str, translation_type: str, file_path: str,
+                 anilist_id: int | None = None, miruro_provider: str | None = None):
         super().__init__()
         self.download_id = download_id
         self.anime_id = anime_id
         self.episode_str = episode_str
         self.translation_type = translation_type
         self.file_path = file_path
+        self.anilist_id = anilist_id
+        self.miruro_provider = miruro_provider
         self.signals = WorkerSignals()
 
     def run(self):
@@ -263,7 +298,10 @@ class DownloadWorker(QRunnable):
             
             # Resolve stream URL
             print(f"Resolving stream URL for {self.anime_id} Episode {self.episode_str}...", flush=True)
-            url, referer = resolve_stream_url(self.anime_id, self.episode_str, self.translation_type)
+            url, referer = resolve_stream_url(
+                self.anime_id, self.episode_str, self.translation_type,
+                anilist_id=self.anilist_id, miruro_provider=self.miruro_provider,
+            )
             if not url:
                 raise ValueError("Stream URL resolution failed.")
             print(f"URL resolved. Beginning download...", flush=True)

@@ -3,7 +3,7 @@ import os
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel, QWidget
 from PyQt6.QtCore import pyqtSignal, Qt, QThreadPool
 from PyQt6.QtGui import QPixmap, QPainter, QColor
-from anigui.backend.worker import MetadataWorker, ThumbnailWorker
+from anigui.backend.worker import MetadataWorker, ThumbnailWorker, start_worker
 
 def _truncate(text: str, max_len: int) -> str:
     """Truncate text to max_len characters, appending '…' if trimmed."""
@@ -37,6 +37,7 @@ class AnimeCard(QFrame):
         
         # UI Setup
         self.setFixedWidth(180)
+        self.setMinimumHeight(360)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setObjectName("AnimeCard")
         
@@ -44,6 +45,7 @@ class AnimeCard(QFrame):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(8, 8, 8, 8)
         self.layout.setSpacing(6)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         # Thumbnail area (fixed 180px card width, image width ~164px, aspect ratio ~1.5)
         self.image_label = QLabel(self)
@@ -79,13 +81,11 @@ class AnimeCard(QFrame):
             self.status_badge.adjustSize()
             self.status_badge.move(4, 4)
         
-        # Title Label (plain text, max 2 lines)
+        # Title Label (plain text)
         self.title_label = QLabel(_truncate(self.title, 28), self)
         self.title_label.setWordWrap(True)
         self.title_label.setObjectName("CardTitle")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        # Limit height to roughly 2 lines
-        self.title_label.setMaximumHeight(40)
         self.layout.addWidget(self.title_label)
         
         # Episode / Sub-Dub counts
@@ -120,7 +120,7 @@ class AnimeCard(QFrame):
             self.score = self.anime_data.get("score") or 0
             thumb_worker = ThumbnailWorker(saved_thumb)
             thumb_worker.signals.finished.connect(self.set_image_from_path)
-            QThreadPool.globalInstance().start(thumb_worker)
+            start_worker(thumb_worker)
             # Still need to fetch AniList metadata for the status badge
             self._ensure_status_fetched()
             return
@@ -129,14 +129,14 @@ class AnimeCard(QFrame):
         worker = MetadataWorker(self.title)
         worker.signals.finished.connect(self._on_metadata_loaded)
         worker.signals.error.connect(self._on_metadata_failed)
-        QThreadPool.globalInstance().start(worker)
+        start_worker(worker)
 
     def _ensure_status_fetched(self):
         """Fetch AniList metadata if status is missing (e.g. bookmark cards)."""
         if not self.anime_data.get("status") and self.title:
             worker = MetadataWorker(self.title)
             worker.signals.finished.connect(self._on_metadata_loaded)
-            QThreadPool.globalInstance().start(worker)
+            start_worker(worker)
 
     def _on_metadata_loaded(self, meta: dict):
         if not meta:
@@ -197,7 +197,7 @@ class AnimeCard(QFrame):
             self.anime_data["thumbnail_url"] = cover_image_url
             thumb_worker = ThumbnailWorker(cover_image_url)
             thumb_worker.signals.finished.connect(self.set_image_from_path)
-            QThreadPool.globalInstance().start(thumb_worker)
+            start_worker(thumb_worker)
         else:
             self._on_metadata_failed("No cover image URL")
 
@@ -210,14 +210,25 @@ class AnimeCard(QFrame):
         if path and os.path.exists(path):
             pixmap = QPixmap(path)
             if not pixmap.isNull():
-                # Scale smoothly to fit thumbnail area
+                # Scale smoothly to fit thumbnail area (expands to cover)
                 scaled = pixmap.scaled(
                     self.image_label.size(),
                     Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                     Qt.TransformationMode.SmoothTransformation
                 )
-                # Crop to fit layout
-                self.image_label.setPixmap(scaled)
+                
+                # Crop the overflow so it doesn't draw over the title label
+                from PyQt6.QtCore import QRect
+                crop_rect = QRect(
+                    (scaled.width() - self.image_label.width()) // 2,
+                    (scaled.height() - self.image_label.height()) // 2,
+                    self.image_label.width(),
+                    self.image_label.height()
+                )
+                cropped = scaled.copy(crop_rect)
+                
+                # Apply cropped image
+                self.image_label.setPixmap(cropped)
                 # Store local path back to anime data
                 self.anime_data["thumbnail_url_local"] = path
                 return

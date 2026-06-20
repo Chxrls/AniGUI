@@ -33,7 +33,7 @@ from PyQt6.QtWidgets import (
 
 from anigui.backend.db import db
 from anigui.backend.api import get_anilist_metadata
-from anigui.backend.worker import MetadataWorker, ThumbnailWorker
+from anigui.backend.worker import MetadataWorker, ThumbnailWorker, start_worker
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -126,7 +126,8 @@ def _anilist_to_app_dict(media: dict) -> dict:
     next_ep = media.get("nextAiringEpisode") or {}
 
     return {
-        # 'id' intentionally omitted — will be filled with AllAnime _id
+        "id": media.get("id"),          # Native AniList numeric ID
+        "anilist_id": media.get("id"),  # Alias for Miruro compatibility
         "name": name,
         "english_name": english if (english and romaji and english.lower() != romaji.lower()) else "",
         "synopsis": synopsis,
@@ -413,58 +414,6 @@ class ImageWorker(QThread):
             self.finished.emit(self.index, pm)
 
 
-class AllAnimeResolveWorker(QThread):
-    """Searches AllAnime by title to resolve the correct streaming ID,
-    episode lists, and sub/dub counts.
-
-    Uses fuzzy matching with episode-count tiebreaker and fallback
-    English-title search to handle franchise titles correctly.
-    """
-    finished = pyqtSignal(dict)
-    error    = pyqtSignal(str)
-
-    def __init__(self, title: str, alt_title: str = "",
-                 expected_episodes: int = 0):
-        super().__init__()
-        self.title = title
-        self.alt_title = alt_title
-        self.expected_episodes = expected_episodes
-
-    def run(self):
-        try:
-            from anigui.backend.api import search_anime
-            from anigui.utils.matching import best_allanime_match, clean_search_query
-
-            alt_titles = [self.alt_title] if self.alt_title else []
-
-            # First attempt — search with primary title (cleaned)
-            clean_title = clean_search_query(self.title)
-            results = search_anime(clean_title)
-            match = best_allanime_match(
-                self.title, results,
-                expected_episodes=self.expected_episodes,
-                alt_titles=alt_titles,
-            )
-
-            # Fallback — retry with English title if primary search failed
-            if not match and self.alt_title:
-                clean_alt = clean_search_query(self.alt_title)
-                if clean_alt.lower() != clean_title.lower():
-                    results2 = search_anime(clean_alt)
-                    match = best_allanime_match(
-                        self.alt_title, results2,
-                        expected_episodes=self.expected_episodes,
-                        alt_titles=[self.title],
-                    )
-
-            if match:
-                self.finished.emit(match)
-            else:
-                self.error.emit(f"No AllAnime match found for '{self.title}'.")
-        except Exception as e:
-            self.error.emit(str(e))
-
-
 # ---------------------------------------------------------------------------
 # AnimeCard widget — responsive like widgets/card.py & bookmarks view
 # ---------------------------------------------------------------------------
@@ -483,11 +432,13 @@ class AnimeCard(QFrame):
 
         self.setObjectName("AnimeCard")
         self.setFixedWidth(CARD_FIXED_W)
+        self.setMinimumHeight(350)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(CARD_MARGIN, CARD_MARGIN, CARD_MARGIN, CARD_MARGIN)
         layout.setSpacing(6)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Cover image — matches widgets/card.py dimensions
         self.cover_label = QLabel(self)
@@ -525,12 +476,11 @@ class AnimeCard(QFrame):
             self.status_badge.adjustSize()
             self.status_badge.move(4, 4)
 
-        # Title label — word-wrap, max 2 lines height
+        # Title label — word-wrap
         title_label = QLabel(_truncate(title_text, 28))
         title_label.setObjectName("CardTitle")
         title_label.setWordWrap(True)
         title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        title_label.setMaximumHeight(40)
 
         # Metadata: score + format + episode count
         score   = anime.get("averageScore") or 0
@@ -552,8 +502,19 @@ class AnimeCard(QFrame):
             Qt.AspectRatioMode.KeepAspectRatioByExpanding,
             Qt.TransformationMode.SmoothTransformation,
         )
+        
+        # Crop the overflow so it doesn't draw over the text labels
+        from PyQt6.QtCore import QRect
+        crop_rect = QRect(
+            (scaled.width() - self.cover_label.width()) // 2,
+            (scaled.height() - self.cover_label.height()) // 2,
+            self.cover_label.width(),
+            self.cover_label.height()
+        )
+        cropped = scaled.copy(crop_rect)
+        
         self.cover_label.setText("")
-        self.cover_label.setPixmap(scaled)
+        self.cover_label.setPixmap(cropped)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -672,7 +633,7 @@ class ContinueWatchingCard(QFrame):
         from PyQt6.QtCore import QThreadPool
         worker = MetadataWorker(self.entry["anime_title"])
         worker.signals.finished.connect(self._on_meta_loaded)
-        QThreadPool.globalInstance().start(worker)
+        start_worker(worker)
 
     def _on_meta_loaded(self, meta: dict):
         if not meta:
@@ -687,7 +648,7 @@ class ContinueWatchingCard(QFrame):
             from PyQt6.QtCore import QThreadPool
             worker = ThumbnailWorker(cover_url)
             worker.signals.finished.connect(self._on_image_loaded)
-            QThreadPool.globalInstance().start(worker)
+            start_worker(worker)
 
     def _on_image_loaded(self, path: str):
         if path and os.path.exists(path):
@@ -1117,57 +1078,9 @@ class HomeView(QWidget):
     # ------------------------------------------------------------------
 
     def _handle_card_click(self, anime_raw: dict):
-        """Resolve the AllAnime streaming ID for this anime, then open
-        the detail dialog with merged AniList + AllAnime data."""
+        """Pass the AniList media dictionary directly to the detail dialog."""
         app_dict = _anilist_to_app_dict(anime_raw)
-
-        # If we already have an AllAnime ID (e.g., from Continue Watching
-        # watch history), use it directly instead of doing a title-based
-        # re-search that may resolve to the wrong anime in a franchise.
-        existing_allanime_id = anime_raw.get("_allanime_id")
-        if existing_allanime_id:
-            app_dict["id"] = existing_allanime_id
-            self.on_card_clicked(app_dict)
-            return
-
-        # Prefer romaji title for AllAnime search (AllAnime indexes by romaji)
-        title_obj = anime_raw.get("title") or {}
-        romaji = title_obj.get("romaji") or ""
-        english = title_obj.get("english") or ""
-        search_title = romaji or english or app_dict.get("name") or "Unknown"
-        alt_title = english if (english and english.lower() != search_title.lower()) else ""
-        expected_eps = app_dict.get("sub_count", 0) or anime_raw.get("episodes", 0) or 0
-
-        # Show busy cursor while resolving
-        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
-
-        # Kill previous resolver if still running
-        if hasattr(self, '_resolve_worker') and self._resolve_worker and self._resolve_worker.isRunning():
-            self._resolve_worker.quit()
-
-        self._resolve_worker = AllAnimeResolveWorker(
-            search_title, alt_title=alt_title, expected_episodes=expected_eps
-        )
-
-        def on_resolved(allanime_match: dict):
-            QApplication.restoreOverrideCursor()
-            app_dict["id"] = allanime_match.get("id", "")
-            app_dict["sub_count"] = allanime_match.get("sub_count", app_dict.get("sub_count", 0))
-            app_dict["dub_count"] = allanime_match.get("dub_count", 0)
-            if "sub_episodes" in allanime_match:
-                app_dict["sub_episodes"] = allanime_match["sub_episodes"]
-            if "dub_episodes" in allanime_match:
-                app_dict["dub_episodes"] = allanime_match["dub_episodes"]
-            self.on_card_clicked(app_dict)
-
-        def on_error(err: str):
-            QApplication.restoreOverrideCursor()
-            app_dict["id"] = ""
-            self.on_card_clicked(app_dict)
-
-        self._resolve_worker.finished.connect(on_resolved)
-        self._resolve_worker.error.connect(on_error)
-        self._resolve_worker.start()
+        self.on_card_clicked(app_dict)
 
     def _on_format_select(self, fmt: str | None):
         """Handle format (Row 1) change — rebuild section tabs, reset

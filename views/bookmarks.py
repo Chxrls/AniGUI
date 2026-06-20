@@ -788,7 +788,8 @@ class BookmarksView(QWidget):
                 "thumbnail_url_local": item["thumbnail_url"],
                 "sub_count": item["sub_count"],
                 "dub_count": item["dub_count"],
-                "last_watched": last_watched
+                "last_watched": last_watched,
+                "anilist_id": item.get("anilist_id")
             }
 
             card = AnimeCard(anime_dict, self)
@@ -924,6 +925,7 @@ class BookmarksView(QWidget):
         anime_data = {
             "id": entry.get("anime_id", ""),
             "name": entry.get("anime_title", "Unknown"),
+            "anilist_id": entry.get("anilist_id"),
         }
         self.on_card_clicked(anime_data)
 

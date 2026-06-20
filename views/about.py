@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 import requests
 
-APP_VERSION = "1.2.5 - Alpha"
+APP_VERSION = "1.2.6 Alpha"
 
 SECTION_CARD_STYLE = """
     QFrame#AboutSection {
@@ -22,8 +22,8 @@ class _StatusWorker(QThread):
     finished = pyqtSignal(dict)  # {service_name: bool}
 
     ENDPOINTS = {
-        "AllAnime API": "https://api.allanime.day/api",
         "AniList API": "https://graphql.anilist.co",
+        "Miruro API": "https://www.miruro.tv/api/secure/pipe",
     }
 
     def run(self):
@@ -74,7 +74,7 @@ class AboutView(QWidget):
         info_card, info_layout = self._make_section_card("App Information")
 
         self._add_info_row(info_layout, "Version", APP_VERSION)
-        self._add_info_row(info_layout, "Streaming Source", "AllAnime  (api.allanime.day)")
+        self._add_info_row(info_layout, "Streaming Sources", "Kiwi, Pewe, Bonk, Bee, Ally, Moo, Hop (via Miruro)")
         self._add_info_row(info_layout, "Anime Metadata", "AniList  (graphql.anilist.co)")
 
         # Service Status sub-header
@@ -86,7 +86,7 @@ class AboutView(QWidget):
         info_layout.addWidget(status_header)
 
         self.status_labels: dict[str, QLabel] = {}
-        for svc in ("AllAnime API", "AniList API"):
+        for svc in ("AniList API", "Miruro API"):
             row_layout = QHBoxLayout()
             row_layout.setContentsMargins(10, 0, 0, 0)
 

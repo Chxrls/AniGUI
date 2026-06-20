@@ -5,9 +5,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QThreadPool
 from PyQt6.QtGui import QPixmap
-from anigui.backend.api import fetch_episodes
+from anigui.backend.api import fetch_episodes, get_available_providers
 from anigui.backend.db import db
-from anigui.backend.worker import EpisodeResolveWorker
+from anigui.backend.worker import EpisodeResolveWorker, start_worker
 from anigui.widgets.player import launch_player_and_save_history
 import os
 
@@ -22,6 +22,7 @@ class AnimeDetailWidget(QWidget):
         self.anime_data = anime_data.copy()
         
         self.anime_id = self.anime_data.get("id") or self.anime_data.get("anime_id")
+        self.anilist_id = self.anime_data.get("anilist_id") or self.anime_data.get("anilistId")
         self.title = self.anime_data.get("name") or self.anime_data.get("anime_title") or "Unknown Title"
         self.english_title = self.anime_data.get("english_name", "")
         raw_synopsis = self.anime_data.get("synopsis") or "No synopsis available."
@@ -175,6 +176,16 @@ class AnimeDetailWidget(QWidget):
         self.trans_selector.currentIndexChanged.connect(self.load_episodes)
         controls_layout.addWidget(self.trans_selector)
         
+        # Provider selector (Miruro streaming providers)
+        self.provider_selector = QComboBox(self)
+        self.provider_selector.view().setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.provider_selector.setObjectName("ProviderSelector")
+        self.provider_selector.addItem("Auto", None)
+        for prov in get_available_providers():
+            self.provider_selector.addItem(prov["name"].capitalize(), prov["name"])
+        self.provider_selector.setToolTip("Streaming provider (Auto tries all in order)")
+        controls_layout.addWidget(self.provider_selector)
+        
         # Bookmark button
         self.bookmark_btn = QPushButton(self)
         self.bookmark_btn.setObjectName("BookmarkButton")
@@ -235,15 +246,26 @@ class AnimeDetailWidget(QWidget):
         if not status_raw and self.title:
             self._fetch_status_async()
 
+        # Backfill anilist_id for old bookmarks if we have it now
+        if db.is_bookmarked(self.anime_id) and self.anilist_id:
+            db.add_bookmark(
+                anime_id=self.anime_id,
+                anime_title=self.title,
+                thumbnail_url=self.thumb_path,
+                sub_count=self.sub_count,
+                dub_count=self.dub_count,
+                anilist_id=self.anilist_id
+            )
+
     def get_current_translation(self) -> str:
         return self.trans_selector.currentData() or "sub"
 
     def _fetch_status_async(self):
         """Fetch AniList metadata to get the airing status when not available."""
-        from anigui.backend.worker import MetadataWorker
+        from anigui.backend.worker import MetadataWorker, start_worker
         worker = MetadataWorker(self.title)
         worker.signals.finished.connect(self._on_status_fetched)
-        QThreadPool.globalInstance().start(worker)
+        start_worker(worker)
 
     def _on_status_fetched(self, meta: dict):
         """Update the airing status badge when metadata arrives."""
@@ -283,12 +305,32 @@ class AnimeDetailWidget(QWidget):
             self.synopsis = cleaned
             self.synopsis_label.setText(cleaned)
 
+        # Backfill anilist_id if it was missing and we found it
+        if meta.get("id") and not self.anilist_id:
+            self.anilist_id = meta["id"]
+            if db.is_bookmarked(self.anime_id):
+                db.add_bookmark(
+                    anime_id=self.anime_id,
+                    anime_title=self.title,
+                    thumbnail_url=self.thumb_path,
+                    sub_count=self.sub_count,
+                    dub_count=self.dub_count,
+                    anilist_id=self.anilist_id
+                )
+
+    def _get_selected_provider(self) -> str | None:
+        """Return the currently selected Miruro provider, or None for auto."""
+        return self.provider_selector.currentData()
+
     def load_episodes(self):
         self.episode_list_widget.clear()
         translation_type = self.get_current_translation()
         
-        # Fetch list of episodes via AllAnime mapping
-        ep_list = fetch_episodes(self.anime_data, translation_type)
+        # Build data dict with anilist_id for Miruro resolution
+        fetch_data = self.anime_data.copy()
+        if self.anilist_id:
+            fetch_data["anilist_id"] = self.anilist_id
+        ep_list = fetch_episodes(fetch_data, translation_type)
         
         # Batch-fetch watched status in a single DB query
         watched_set = db.get_watched_episodes(self.anime_id, translation_type)
@@ -331,7 +373,8 @@ class AnimeDetailWidget(QWidget):
                 anime_title=self.title,
                 thumbnail_url=self.thumb_path,
                 sub_count=self.sub_count,
-                dub_count=self.dub_count
+                dub_count=self.dub_count,
+                anilist_id=self.anilist_id
             )
         self.update_bookmark_button_ui()
         self._refresh_folder_selector()
@@ -372,7 +415,8 @@ class AnimeDetailWidget(QWidget):
                 anime_title=self.title,
                 thumbnail_url=self.thumb_path,
                 sub_count=self.sub_count,
-                dub_count=self.dub_count
+                dub_count=self.dub_count,
+                anilist_id=self.anilist_id
             )
             self.update_bookmark_button_ui()
 
@@ -400,21 +444,29 @@ class AnimeDetailWidget(QWidget):
         # Store reference to the clicked item for targeted badge update
         self._playing_item = item
         
-        # Async stream resolution
-        worker = EpisodeResolveWorker(self.anime_id, ep_str, translation_type)
+        # Async stream resolution (Miruro-first when anilist_id available)
+        worker = EpisodeResolveWorker(
+            self.anime_id, ep_str, translation_type,
+            anilist_id=self.anilist_id,
+            miruro_provider=self._get_selected_provider(),
+        )
         worker.signals.progress.connect(self._on_stream_progress)
         worker.signals.finished.connect(lambda result: self._on_stream_resolved(result, ep_str, translation_type))
         worker.signals.error.connect(self._on_stream_failed)
-        QThreadPool.globalInstance().start(worker)
+        start_worker(worker)
 
     def _on_stream_progress(self, message: str):
         self.status_label.setText(message)
         self.status_label.setStyleSheet(apply_theme("color: #a78bfa;"))
 
     def _on_stream_resolved(self, result, ep_str: str, translation_type: str):
-        url, referer = result
-        self.status_label.setText("Success")
-        self.status_label.setStyleSheet(apply_theme("color: #888888;"))
+        try:
+            url, referer = result
+            self.status_label.setText("Success")
+            self.status_label.setStyleSheet(apply_theme("color: #10b981;"))
+        except RuntimeError:
+            return  # View was closed while resolving
+
         
         try:
             # Play using mpv and record watched log
@@ -424,7 +476,8 @@ class AnimeDetailWidget(QWidget):
                 anime_title=self.title,
                 episode_str=ep_str,
                 translation_type=translation_type,
-                referer=referer
+                referer=referer,
+                anilist_id=self.anilist_id
             )
             # Update only the played episode's badge instead of rebuilding
             # the entire list (avoids N individual DB queries on main thread)
@@ -487,8 +540,11 @@ class AnimeDetailWidget(QWidget):
             size=0
         )
         
-        from anigui.backend.worker import download_manager
-        download_manager.start_download(download_id, self.anime_id, ep_str, translation_type, file_path)
+        from anigui.backend.worker import download_manager, start_worker
+        download_manager.start_download(
+            download_id, self.anime_id, ep_str, translation_type, file_path,
+            anilist_id=self.anilist_id, miruro_provider=self._get_selected_provider(),
+        )
         
         self.status_label.setText(f"Started downloading Ep {ep_str}.")
         self.status_label.setStyleSheet(apply_theme("color: #c084fc;"))
@@ -507,7 +563,7 @@ class AnimeDetailWidget(QWidget):
         
         safe_title = "".join([c for c in self.title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
         
-        from anigui.backend.worker import download_manager
+        from anigui.backend.worker import download_manager, start_worker
         count = 0
         for ep in ep_list:
             ep_str = ep["number_str"]
@@ -524,7 +580,10 @@ class AnimeDetailWidget(QWidget):
                 file_path=file_path,
                 size=0
             )
-            download_manager.start_download(download_id, self.anime_id, ep_str, translation_type, file_path)
+            download_manager.start_download(
+                download_id, self.anime_id, ep_str, translation_type, file_path,
+                anilist_id=self.anilist_id, miruro_provider=self._get_selected_provider(),
+            )
             count += 1
             
         if count > 0:
