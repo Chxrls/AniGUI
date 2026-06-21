@@ -521,6 +521,7 @@ class AnimeDetailWidget(QWidget):
             
         ep_str = ep_data["number_str"]
         translation_type = self.get_current_translation()
+        miruro_provider = self._get_selected_provider()
         
         # Retrieve user configured download path
         download_dir = db.get_setting("download_path", "~/Downloads")
@@ -537,13 +538,16 @@ class AnimeDetailWidget(QWidget):
             anime_title=self.title,
             episode_str=ep_str,
             file_path=file_path,
-            size=0
+            size=0,
+            anilist_id=self.anilist_id,
+            translation_type=translation_type,
+            miruro_provider=miruro_provider,
         )
         
         from anigui.backend.worker import download_manager, start_worker
         download_manager.start_download(
             download_id, self.anime_id, ep_str, translation_type, file_path,
-            anilist_id=self.anilist_id, miruro_provider=self._get_selected_provider(),
+            anilist_id=self.anilist_id, miruro_provider=miruro_provider,
         )
         
         self.status_label.setText(f"Started downloading Ep {ep_str}.")
@@ -551,7 +555,13 @@ class AnimeDetailWidget(QWidget):
 
     def queue_download_all(self):
         translation_type = self.get_current_translation()
-        ep_list = fetch_episodes(self.anime_data, translation_type)
+        miruro_provider = self._get_selected_provider()
+        
+        # Ensure anilist_id is injected for Miruro resolution
+        fetch_data = self.anime_data.copy()
+        if self.anilist_id:
+            fetch_data["anilist_id"] = self.anilist_id
+        ep_list = fetch_episodes(fetch_data, translation_type)
         if not ep_list:
             self.status_label.setText("No episodes found to download.")
             self.status_label.setStyleSheet(apply_theme("color: #f87171;"))
@@ -578,11 +588,14 @@ class AnimeDetailWidget(QWidget):
                 anime_title=self.title,
                 episode_str=ep_str,
                 file_path=file_path,
-                size=0
+                size=0,
+                anilist_id=self.anilist_id,
+                translation_type=translation_type,
+                miruro_provider=miruro_provider,
             )
             download_manager.start_download(
                 download_id, self.anime_id, ep_str, translation_type, file_path,
-                anilist_id=self.anilist_id, miruro_provider=self._get_selected_provider(),
+                anilist_id=self.anilist_id, miruro_provider=miruro_provider,
             )
             count += 1
             

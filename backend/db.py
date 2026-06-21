@@ -106,9 +106,24 @@ class Database:
                     file_path TEXT,
                     file_size_bytes INTEGER,
                     status TEXT DEFAULT 'queued',
+                    error_message TEXT,
+                    anilist_id INTEGER,
+                    translation_type TEXT DEFAULT 'sub',
+                    miruro_provider TEXT,
                     added_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # Migrations for existing downloads tables
+            for col, col_def in [
+                ("error_message", "TEXT"),
+                ("anilist_id", "INTEGER"),
+                ("translation_type", "TEXT DEFAULT 'sub'"),
+                ("miruro_provider", "TEXT"),
+            ]:
+                try:
+                    conn.execute(f"ALTER TABLE downloads ADD COLUMN {col} {col_def}")
+                except sqlite3.OperationalError:
+                    pass
             # GraphQL and other API query cache table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS api_cache (
@@ -339,23 +354,28 @@ class Database:
             return [dict(row) for row in cur.fetchall()]
 
     # Downloads API
-    def add_download(self, anime_id: str, anime_title: str, episode_str: str, file_path: str, size: int = 0) -> int:
+    def add_download(self, anime_id: str, anime_title: str, episode_str: str, file_path: str, size: int = 0,
+                     anilist_id: Optional[int] = None, translation_type: str = "sub",
+                     miruro_provider: Optional[str] = None) -> int:
         with self._get_conn() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO downloads (anime_id, anime_title, episode_str, file_path, file_size_bytes, status)
-                VALUES (?, ?, ?, ?, ?, 'queued')
+                INSERT INTO downloads (anime_id, anime_title, episode_str, file_path,
+                                      file_size_bytes, status, anilist_id, translation_type, miruro_provider)
+                VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)
                 """,
-                (anime_id, anime_title, episode_str, file_path, size)
+                (anime_id, anime_title, episode_str, file_path, size,
+                 anilist_id, translation_type, miruro_provider)
             )
             conn.commit()
             return cur.lastrowid
 
-    def update_download_status(self, download_id: int, status: str, size: int = 0):
+    def update_download_status(self, download_id: int, status: str, size: int = 0,
+                               error_message: Optional[str] = None):
         with self._get_conn() as conn:
             conn.execute(
-                "UPDATE downloads SET status = ?, file_size_bytes = ? WHERE id = ?",
-                (status, size, download_id)
+                "UPDATE downloads SET status = ?, file_size_bytes = ?, error_message = ? WHERE id = ?",
+                (status, size, error_message, download_id)
             )
             conn.commit()
 
@@ -363,6 +383,12 @@ class Database:
         with self._get_conn() as conn:
             cur = conn.execute("SELECT * FROM downloads ORDER BY added_at DESC")
             return [dict(row) for row in cur.fetchall()]
+
+    def get_download_by_id(self, download_id: int) -> Optional[dict]:
+        with self._get_conn() as conn:
+            cur = conn.execute("SELECT * FROM downloads WHERE id = ?", (download_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
 
     def remove_download(self, download_id: int):
         with self._get_conn() as conn:

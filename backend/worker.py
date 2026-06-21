@@ -1,6 +1,7 @@
 import os
 import subprocess
 import hashlib
+import time
 import requests
 import psutil
 import re
@@ -105,6 +106,23 @@ class DownloadManager(QObject):
                 self.status_changed.emit(download_id, "failed")
             except Exception as e:
                 print(f"Error killing: {e}")
+
+    def retry_download(self, download_id):
+        """Re-launch a failed download using its stored parameters."""
+        from anigui.backend.db import db
+        record = db.get_download_by_id(download_id)
+        if not record:
+            print(f"Retry failed: download {download_id} not found in DB")
+            return
+        self.start_download(
+            download_id=download_id,
+            anime_id=record["anime_id"],
+            ep_str=record["episode_str"],
+            translation_type=record.get("translation_type", "sub"),
+            file_path=record["file_path"],
+            anilist_id=record.get("anilist_id"),
+            miruro_provider=record.get("miruro_provider"),
+        )
 
 download_manager = DownloadManager()
 
@@ -293,17 +311,48 @@ class DownloadWorker(QRunnable):
 
     def run(self):
         from anigui.backend.db import db
+        from anigui.backend.allanime import search_anime as allanime_search, resolve_stream_url as allanime_resolve
+        MAX_RETRIES = 2
+        RETRY_DELAY = 3  # seconds
         try:
             print(f"Worker thread started for download ID {self.download_id}", flush=True)
             
-            # Resolve stream URL
-            print(f"Resolving stream URL for {self.anime_id} Episode {self.episode_str}...", flush=True)
-            url, referer = resolve_stream_url(
-                self.anime_id, self.episode_str, self.translation_type,
-                anilist_id=self.anilist_id, miruro_provider=self.miruro_provider,
-            )
+            # Retrieve anime title for AllAnime search
+            record = db.get_download_by_id(self.download_id)
+            if not record:
+                raise ValueError(f"Download record {self.download_id} not found in database.")
+            anime_title = record.get("anime_title", "Unknown")
+            
+            # Resolve stream URL with retry for transient pipe failures
+            url = None
+            referer = None
+            last_error = None
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    print(f"Searching AllAnime for '{anime_title}' (attempt {attempt}/{MAX_RETRIES})...", flush=True)
+                    search_results = allanime_search(anime_title)
+                    if not search_results:
+                        raise ValueError(f"No results found on AllAnime for '{anime_title}'")
+                    
+                    # Use the first result's ID (best match)
+                    aa_id = search_results[0]["id"]
+                    print(f"Resolving stream URL for AllAnime ID {aa_id} Episode {self.episode_str}...", flush=True)
+                    
+                    url, referer = allanime_resolve(
+                        aa_id, self.episode_str, self.translation_type,
+                    )
+                    if url:
+                        break
+                except Exception as e:
+                    last_error = e
+                    if attempt < MAX_RETRIES:
+                        print(f"Attempt {attempt} failed: {e}. Retrying in {RETRY_DELAY}s...", flush=True)
+                        time.sleep(RETRY_DELAY)
+                    else:
+                        raise
+            
             if not url:
-                raise ValueError("Stream URL resolution failed.")
+                raise ValueError(f"Stream URL resolution failed after {MAX_RETRIES} attempts. Last error: {last_error}")
             print(f"URL resolved. Beginning download...", flush=True)
 
             # Download using ffmpeg
@@ -374,6 +423,11 @@ class DownloadWorker(QRunnable):
             
             self.signals.finished.emit(self.file_path)
         except Exception as e:
-            db.update_download_status(self.download_id, "failed")
+            error_msg = str(e)
+            # Truncate very long error messages for DB storage
+            if len(error_msg) > 500:
+                error_msg = error_msg[:497] + "..."
+            print(f"Download {self.download_id} failed: {error_msg}", flush=True)
+            db.update_download_status(self.download_id, "failed", error_message=error_msg)
             download_manager.status_changed.emit(self.download_id, "failed")
-            self.signals.error.emit(str(e))
+            self.signals.error.emit(error_msg)

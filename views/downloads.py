@@ -94,6 +94,7 @@ class DownloadsView(QWidget):
             size = self.format_size(item.get("file_size_bytes", 0))
             status = item.get("status") or "queued"
             date = item.get("added_at") or ""
+            error_msg = item.get("error_message") or ""
             
             # Create non-editable items
             t_item = QTableWidgetItem(title)
@@ -125,8 +126,17 @@ class DownloadsView(QWidget):
             p_layout.addWidget(p_label)
             self.table.setCellWidget(row_idx, 3, progress_widget)
             
+            # Status item with color-coding
             st_item = QTableWidgetItem(status.capitalize())
             st_item.setFlags(st_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if status == "completed":
+                st_item.setForeground(Qt.GlobalColor.green)
+            elif status == "failed":
+                st_item.setForeground(Qt.GlobalColor.red)
+                if error_msg:
+                    st_item.setToolTip(f"Error: {error_msg}")
+            elif status == "downloading":
+                st_item.setForeground(Qt.GlobalColor.yellow)
             self.table.setItem(row_idx, 4, st_item)
             
             dt_item = QTableWidgetItem(date)
@@ -145,6 +155,13 @@ class DownloadsView(QWidget):
                 pause_btn = QPushButton("Pause" if status == "downloading" else "Resume")
                 pause_btn.clicked.connect(lambda checked, d_id=download_id, b=pause_btn: self.toggle_pause(d_id, b))
                 a_layout.addWidget(pause_btn)
+            
+            if status == "failed":
+                retry_btn = QPushButton("🔄")
+                retry_btn.setToolTip("Retry Download")
+                retry_btn.setFixedWidth(35)
+                retry_btn.clicked.connect(lambda checked, d_id=download_id: self.retry_download(d_id))
+                a_layout.addWidget(retry_btn)
                 
             delete_btn = QPushButton("🗑️") # Trash icon
             delete_btn.setToolTip("Delete Download")
@@ -226,6 +243,11 @@ class DownloadsView(QWidget):
                     break
             db.remove_download(download_id)
             self.refresh()
+
+    def retry_download(self, download_id: int):
+        """Retry a failed download by re-launching via download_manager."""
+        download_manager.retry_download(download_id)
+        self.refresh()
 
     def open_file(self, item: QTableWidgetItem):
         row = item.row()
