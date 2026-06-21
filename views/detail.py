@@ -10,8 +10,9 @@ from anigui.backend.db import db
 from anigui.backend.worker import EpisodeResolveWorker, start_worker
 from anigui.widgets.player import launch_player_and_save_history
 import os
-
+from anigui.backend.worker import ThumbnailWorker, start_worker
 class AnimeDetailWidget(QWidget):
+    
     """Detailed view for a selected anime.
 
     Allows translation selection, bookmark toggling, download queueing,
@@ -304,6 +305,30 @@ class AnimeDetailWidget(QWidget):
             cleaned = cleaned.replace("<i>", "").replace("</i>", "").replace("<b>", "").replace("</b>", "").strip()
             self.synopsis = cleaned
             self.synopsis_label.setText(cleaned)
+
+        # Update thumbnail if it was missing
+        if not self.thumb_path and meta.get("coverImage"):
+            cover_dict = meta["coverImage"]
+            cover_url = cover_dict.get("large") or cover_dict.get("medium") or ""
+            if cover_url:
+
+                
+                def _on_thumb(path):
+                    if path and os.path.exists(path):
+                        self.thumb_path = path
+                        pix = QPixmap(path)
+                        if not pix.isNull():
+                            self.cover_label.setPixmap(pix.scaled(
+                                self.cover_label.size(),
+                                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                                Qt.TransformationMode.SmoothTransformation
+                            ))
+                            self.cover_label.setStyleSheet("")
+                            self.cover_label.setText("")
+
+                thumb_worker = ThumbnailWorker(cover_url)
+                thumb_worker.signals.finished.connect(_on_thumb)
+                start_worker(thumb_worker)
 
         # Backfill anilist_id if it was missing and we found it
         if meta.get("id") and not self.anilist_id:
