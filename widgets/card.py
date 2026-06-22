@@ -37,7 +37,7 @@ class AnimeCard(QFrame):
         
         # UI Setup
         self.setFixedWidth(180)
-        self.setMinimumHeight(360)
+        self.setMinimumHeight(330)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setObjectName("AnimeCard")
         
@@ -82,7 +82,7 @@ class AnimeCard(QFrame):
             self.status_badge.move(4, 4)
         
         # Title Label (plain text)
-        self.title_label = QLabel(_truncate(self.title, 28), self)
+        self.title_label = QLabel(_truncate(self.title, 38), self)
         self.title_label.setWordWrap(True)
         self.title_label.setObjectName("CardTitle")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)

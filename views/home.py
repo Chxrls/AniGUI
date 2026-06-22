@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
 from anigui.backend.db import db
 from anigui.backend.api import get_anilist_metadata
 from anigui.backend.worker import MetadataWorker, ThumbnailWorker, start_worker
+from anigui.widgets.card import AnimeCard
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -399,127 +400,7 @@ class ScheduleWorker(QThread):
             self.error.emit(str(e))
 
 
-class ImageWorker(QThread):
-    """Downloads a single cover image and emits the QPixmap."""
-    finished = pyqtSignal(int, QPixmap)   # (card_index, pixmap)
 
-    def __init__(self, index: int, url: str):
-        super().__init__()
-        self.index = index
-        self.url   = url
-
-    def run(self):
-        pm = load_image(self.url)
-        if pm:
-            self.finished.emit(self.index, pm)
-
-
-# ---------------------------------------------------------------------------
-# AnimeCard widget — responsive like widgets/card.py & bookmarks view
-# ---------------------------------------------------------------------------
-
-class AnimeCard(QFrame):
-    """Card widget matching the existing card.py style:
-    - Fixed width 180px, no fixed height (grows with content)
-    - Cover image 164×246px
-    - Title with word-wrap, max 2 lines (~40px)
-    - Metadata line
-    """
-    def __init__(self, anime: dict, on_click: Callable[[dict], None], parent=None):
-        super().__init__(parent)
-        self.anime    = anime
-        self.on_click = on_click
-
-        self.setObjectName("AnimeCard")
-        self.setFixedWidth(CARD_FIXED_W)
-        self.setMinimumHeight(350)
-        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(CARD_MARGIN, CARD_MARGIN, CARD_MARGIN, CARD_MARGIN)
-        layout.setSpacing(6)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-
-        # Cover image — matches widgets/card.py dimensions
-        self.cover_label = QLabel(self)
-        self.cover_label.setFixedSize(CARD_IMG_W, CARD_IMG_H)
-        self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cover_label.setObjectName("CardCover")
-        self.cover_label.setStyleSheet(apply_theme(
-            "background-color: #242424; color: #888888;"
-        ))
-
-        title_text = (anime.get("title") or {}).get("english") or \
-                     (anime.get("title") or {}).get("romaji") or "Unknown"
-        self.cover_label.setText(_truncate(title_text, 20))
-        self.cover_label.setWordWrap(True)
-
-        # Status badge — overlay on the cover image
-        status_raw = anime.get("status") or ""
-        STATUS_DISPLAY = {
-            "RELEASING": ("Airing", "#16a34a", "#dcfce7"),
-            "FINISHED": ("Finished", "#64748b", "#e2e8f0"),
-            "NOT_YET_RELEASED": ("Upcoming", "#d97706", "#fef3c7"),
-            "CANCELLED": ("Cancelled", "#dc2626", "#fee2e2"),
-            "HIATUS": ("Hiatus", "#9333ea", "#f3e8ff"),
-        }
-        if status_raw in STATUS_DISPLAY:
-            display_text, bg_color, text_color = STATUS_DISPLAY[status_raw]
-            self.status_badge = QLabel(display_text, self.cover_label)
-            self.status_badge.setObjectName("CardStatusBadge")
-            self.status_badge.setStyleSheet(
-                f"QLabel#CardStatusBadge {{ background-color: {bg_color}; color: {text_color}; "
-                f"font-size: 9px; font-weight: bold; padding: 2px 6px; "
-                f"border-radius: 3px; }}"
-            )
-            self.status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.status_badge.adjustSize()
-            self.status_badge.move(4, 4)
-
-        # Title label — word-wrap
-        title_label = QLabel(_truncate(title_text, 28))
-        title_label.setObjectName("CardTitle")
-        title_label.setWordWrap(True)
-        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-
-        # Metadata: score + format + episode count
-        score   = anime.get("averageScore") or 0
-        fmt     = anime.get("format") or ""
-        eps     = anime.get("episodes")
-        ep_text = f"{eps} eps" if eps else "? eps"
-        meta_text = f"★ {score/10:.1f}  •  {fmt}  •  {ep_text}" if score else f"{fmt}  •  {ep_text}"
-
-        meta_label = QLabel(meta_text.strip(" •"))
-        meta_label.setObjectName("CardMetadata")
-
-        layout.addWidget(self.cover_label)
-        layout.addWidget(title_label)
-        layout.addWidget(meta_label)
-
-    def set_cover(self, pixmap: QPixmap):
-        scaled = pixmap.scaled(
-            self.cover_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        
-        # Crop the overflow so it doesn't draw over the text labels
-        from PyQt6.QtCore import QRect
-        crop_rect = QRect(
-            (scaled.width() - self.cover_label.width()) // 2,
-            (scaled.height() - self.cover_label.height()) // 2,
-            self.cover_label.width(),
-            self.cover_label.height()
-        )
-        cropped = scaled.copy(crop_rect)
-        
-        self.cover_label.setText("")
-        self.cover_label.setPixmap(cropped)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.on_click(self.anime)
-        super().mousePressEvent(event)
 
 
 # ---------------------------------------------------------------------------
@@ -579,7 +460,7 @@ class ScheduleRow(QFrame):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self._on_click(self._media)
+            self._on_click(_anilist_to_app_dict(self._media))
         super().mousePressEvent(event)
 
 
@@ -638,11 +519,17 @@ class ContinueWatchingCard(QFrame):
     def _on_meta_loaded(self, meta: dict):
         if not meta:
             return
-        self.anime_data = meta
-        # Preserve the AllAnime ID from watch history so the detail view
+        
+        app_dict = _anilist_to_app_dict(meta)
+        
+        # Preserve the anime_id from watch history so the detail view
         # uses the correct anime instead of doing a lossy title re-search.
         if self.entry.get("anime_id"):
-            self.anime_data["_allanime_id"] = self.entry["anime_id"]
+            app_dict["id"] = self.entry["anime_id"]
+            app_dict["anime_id"] = self.entry["anime_id"]
+            
+        self.anime_data = app_dict
+        
         cover_url = (meta.get("coverImage") or {}).get("large") or (meta.get("coverImage") or {}).get("medium")
         if cover_url:
             from PyQt6.QtCore import QThreadPool
@@ -806,7 +693,6 @@ class CardGrid(QScrollArea):
     def __init__(self, on_click: Callable[[dict], None], parent=None):
         super().__init__(parent)
         self.on_click   = on_click
-        self._workers:  list[ImageWorker] = []
         self._cards:    list[AnimeCard]   = []
         self._media_list: list[dict] = []
 
@@ -825,33 +711,19 @@ class CardGrid(QScrollArea):
         self.setWidget(self._container)
 
     def populate(self, media_list: list[dict]):
-        # Clear previous cards and workers
-        for w in self._workers:
-            w.quit()
-        self._workers.clear()
+        # Clear previous cards
         self._cards.clear()
         self._media_list = media_list
 
         self._clear_grid()
 
         for i, anime in enumerate(media_list):
-            card = AnimeCard(anime, self.on_click, self._container)
+            app_dict = _anilist_to_app_dict(anime)
+            card = AnimeCard(app_dict, self._container)
+            card.clicked.connect(self.on_click)
             self._cards.append(card)
 
-            # Async image fetch
-            cover_url = (anime.get("coverImage") or {}).get("large") or \
-                        (anime.get("coverImage") or {}).get("medium") or ""
-            if cover_url:
-                worker = ImageWorker(i, cover_url)
-                worker.finished.connect(self._on_image)
-                self._workers.append(worker)
-                worker.start()
-
         self._rearrange_grid()
-
-    def _on_image(self, index: int, pixmap: QPixmap):
-        if index < len(self._cards):
-            self._cards[index].set_cover(pixmap)
 
     def show_status(self, msg: str):
         self._clear_grid()
@@ -1077,10 +949,9 @@ class HomeView(QWidget):
     # Event handlers
     # ------------------------------------------------------------------
 
-    def _handle_card_click(self, anime_raw: dict):
-        """Pass the AniList media dictionary directly to the detail dialog."""
-        app_dict = _anilist_to_app_dict(anime_raw)
-        self.on_card_clicked(app_dict)
+    def _handle_card_click(self, anime_data: dict):
+        """Pass the app dictionary directly to the detail dialog."""
+        self.on_card_clicked(anime_data)
 
     def _on_format_select(self, fmt: str | None):
         """Handle format (Row 1) change — rebuild section tabs, reset

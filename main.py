@@ -183,7 +183,7 @@ QPushButton#BookmarkButton, QPushButton#DownloadButton {
     border: 1px solid #2e2e2e;
     border-radius: 4px;
     padding: 5px 10px;
-    font-weight: bold;
+    font-weight: normal;
 }
 
 QPushButton#BookmarkButton:hover, QPushButton#DownloadButton:hover {

@@ -177,11 +177,11 @@ class AnimeDetailWidget(QWidget):
         self.trans_selector.currentIndexChanged.connect(self.load_episodes)
         controls_layout.addWidget(self.trans_selector)
         
-        # Provider selector (Miruro streaming providers)
+        # Provider selector 
         self.provider_selector = QComboBox(self)
         self.provider_selector.view().setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.provider_selector.setObjectName("ProviderSelector")
-        self.provider_selector.addItem("Auto", None)
+        self.provider_selector.addItem("Source (auto)", None)
         for prov in get_available_providers():
             self.provider_selector.addItem(prov["name"].capitalize(), prov["name"])
         self.provider_selector.setToolTip("Streaming provider (Auto tries all in order)")
