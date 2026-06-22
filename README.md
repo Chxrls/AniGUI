@@ -1,6 +1,6 @@
 # AniGUI
 
-AniGUI is a native desktop client prototype for streaming anime.
+AniGUI is a native desktop client prototype for streaming and downloading anime.
 
 ![landing page](repoAssets/AniGUI_LandingPage.png)
 
@@ -11,10 +11,12 @@ AniGUI is a native desktop client prototype for streaming anime.
 ## Features
 - **Debounced Search:** Asynchronous searches that trigger 500ms after you stop typing (or instantly upon pressing Enter).
 - **AniList Metadata & Cover Cache:** Automatically fetches cover images, scores, genres, and synopses from AniList, saving them locally in an SQLite cache and caching downloaded thumbnails on disk.
+- **Streaming Source:** Multiple sources, large anime database, and fast playback using a reverse engineered backend from `Miruro.tv`.
+- **Downloads:** Downloads handled by a separate thread fetched using `AllAnime` backend.
 - **Local Persistence:** Local SQLite database at `~/.config/anigui/anigui.db` handles Bookmarks, Watch History, and Downloads.
 - **Detached mpv Playback:** Double-clicking an episode resolves the streaming link in a worker thread and starts playback in an independent, detached `mpv` session.
 
-## For Development, or for Installing the Application, Follow the Steps Below
+## For Development or Installing the Application, Follow the Steps Below
 
 ### System Prerequisites
 **mpv Media Player:**
