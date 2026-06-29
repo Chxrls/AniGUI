@@ -1,12 +1,7 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 bin/
 build/
 develop-eggs/
@@ -25,17 +20,9 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-
-# PyInstaller
-# Typically Python apps written with PyInstaller write .spec files.
-# Ignore them or keep them based on developer preference.
 *.spec
-
-# Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
-
-# Unit test / coverage reports
 htmlcov/
 .tox/
 .nosexy/
@@ -48,17 +35,11 @@ env/
 ENV/
 env.bak/
 venv.bak/
-
-# IDEs and editors
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# Project specific ignores
 not_needed/
 refactor_styles.py
-
-# Build artifacts
 vendor/
 Output/
